@@ -1,0 +1,34 @@
+name: code-analysis
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  CodeQL-Build:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        
+      - name: Configure
+        uses: ./.github/actions/configure-linux
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: cpp
+          queries: security-and-quality
+          build-mode: manual
+
+      - name: Build
+        run: make -j $(nproc)
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
