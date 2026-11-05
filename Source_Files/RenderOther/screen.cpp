@@ -37,7 +37,6 @@
 #include "OGL_Headers.h"
 #include "OGL_Blitter.h"
 #include "OGL_Faders.h"
-#include "OGL_Textures.h"
 #endif
 
 #include "world.h"
@@ -116,6 +115,9 @@ bool using_default_gamma = true;
 static bool PrevFullscreen = false;
 static bool in_game = false;	// Flag: menu (fixed 640x480) or in-game (variable size) display
 
+static int desktop_width;
+static int desktop_height;
+
 static int failed_multisamples = 0;		// remember when GL multisample setting didn't succeed
 static bool passed_shader = false;      // remember when we passed Shader tests
 
@@ -138,6 +140,7 @@ static void update_screen(SDL_Rect &source, SDL_Rect &destination, bool hi_rez, 
 static void update_fps_display(SDL_Surface *s);
 static void DisplayPosition(SDL_Surface *s);
 static void DisplayMessages(SDL_Surface *s);
+static void DisplayNetMicStatus(SDL_Surface *s);
 static void DrawSurface(SDL_Surface *s, SDL_Rect &dest_rect, SDL_Rect &src_rect);
 static void clear_screen_margin();
 
@@ -302,11 +305,6 @@ int Screen::height()
 int Screen::width()
 {
 	return MainScreenLogicalWidth();
-}
-
-float Screen::pixel_scale()
-{
-	return MainScreenPixelScale();
 }
 
 int Screen::window_height()
@@ -596,7 +594,8 @@ static void reallocate_world_pixels(int width, int height)
 		SDL_FreeSurface(world_pixels_corrected);
 		world_pixels_corrected = NULL;
 	}
-
+	SDL_PixelFormat *f = main_surface->format;
+//	world_pixels = SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, f->BitsPerPixel, f->Rmask, f->Gmask, f->Bmask, f->Amask);
 	switch (bit_depth)
 	{
 	case 8:
@@ -932,8 +931,8 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 								   sdl_width, sdl_height,
 								   flags);
 
-	bool context_created = false;
 #ifdef HAVE_OPENGL
+	bool context_created = false;
 	if (main_screen == NULL && !nogl && screen_mode.acceleration != _no_acceleration && Get_OGL_ConfigureData().Multisamples > 0) {
 		// retry with multisampling off
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
@@ -947,6 +946,7 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 			failed_multisamples = Get_OGL_ConfigureData().Multisamples;
 	}
 #endif
+#ifdef HAVE_OPENGL // context_created is only there with OpenGL
 	if (main_screen == NULL && !nogl && screen_mode.acceleration != _no_acceleration) {
 		fprintf(stderr, "WARNING: Failed to initialize OpenGL with 24 bit depth\n");
 		fprintf(stderr, "WARNING: Retrying with 16 bit depth\n");
@@ -967,7 +967,7 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 			SDL_GL_CreateContext(main_screen);
 			context_created = true;
 		}
-#if defined (__WIN32__) && (HAVE_OPENGL)
+#ifdef __WIN32__
 		glewInit();
 #endif
 		if (!OGL_CheckExtension("GL_ARB_vertex_shader") || !OGL_CheckExtension("GL_ARB_fragment_shader") || !OGL_CheckExtension("GL_ARB_shader_objects") || !OGL_CheckExtension("GL_ARB_shading_language_100"))
@@ -987,7 +987,7 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 			passed_shader = true;
 		}
 	}
-//#endif
+#endif
 
 	if (main_screen == NULL) {
 		fprintf(stderr, "Can't open video display (%s)\n", SDL_GetError());
@@ -1231,7 +1231,6 @@ void toggle_fullscreen()
  */
 
 static bool clear_next_screen = false;
-static void darken_world_window(void);
 
 void update_world_view_camera()
 {
@@ -1240,7 +1239,7 @@ void update_world_view_camera()
 	world_view->maximum_depth_intensity = current_player->weapon_intensity;
 
 	world_view->origin = current_player->camera_location;
-	if (graphics_preferences->screen_mode.bobbing_type != BobbingType::camera_and_weapon)
+	if (!graphics_preferences->screen_mode.camera_bob)
 		world_view->origin.z -= current_player->step_height;
 	world_view->origin_polygon_index = current_player->camera_polygon_index;
 
@@ -1264,8 +1263,6 @@ void update_world_view_camera()
 		}
 	}
 }
-
-extern bool is_network_pregame;
 
 void render_screen(short ticks_elapsed)
 {
@@ -1351,7 +1348,7 @@ void render_screen(short ticks_elapsed)
 	}
 	
 	static bool PrevHighRes = true;
-	bool HighResolution = mode->high_resolution || is_network_pregame;
+	bool HighResolution = mode->high_resolution;
 	if (PrevHighRes != HighResolution)
 	{
 		ViewChangedSize = true;
@@ -1391,7 +1388,7 @@ void render_screen(short ticks_elapsed)
 		if (!OGL_IsActive() && DrawEveryOtherLine)
 			clear_screen();
 		update_full_screen = true;
-		if (Screen::instance()->hud() && !Screen::instance()->lua_hud() && !is_network_pregame)
+		if (Screen::instance()->hud() && !Screen::instance()->lua_hud())
 			draw_interface();
 
 		// Reallocate the drawing buffer
@@ -1406,7 +1403,7 @@ void render_screen(short ticks_elapsed)
 	{
 		clear_screen(false);
 		update_full_screen = true;
-		if (Screen::instance()->hud() && !Screen::instance()->lua_hud() && !is_network_pregame)
+		if (Screen::instance()->hud() && !Screen::instance()->lua_hud())
 			draw_interface();
 
 		clear_next_screen = false;
@@ -1448,28 +1445,6 @@ void render_screen(short ticks_elapsed)
     if (screen_mode.acceleration == _no_acceleration &&
 		(MapIsTranslucent || Screen::instance()->lua_hud()))
         clear_screen_margin();
-
-	if (game_is_networked && is_network_pregame)
-	{
-		clear_screen(false);
-
-#ifdef HAVE_OPENGL
-		if (OGL_IsActive())
-		{
-			Screen::instance()->bound_screen();
-			OGL_SetWindow(sr, sr, true);
-			DisplayNetLoadingScreen(MainScreenSurface());
-			OGL_SwapBuffers();
-			return;
-		}
-#endif
-		SDL_Rect rect = { (Screen::instance()->window_rect().w - ViewRect.w) / 2, (Screen::instance()->window_rect().h - ViewRect.h) / 2, 0, 0 };
-		SDL_FillRect(world_pixels, NULL, SDL_MapRGB(world_pixels->format, 0, 0, 0));
-		DisplayNetLoadingScreen(world_pixels);
-		update_screen(rect, rect, true, false);
-		MainScreenUpdateRect(0, 0, 0, 0);
-		return;
-	}
     
 	// Render crosshairs
 	if (!world_view->overhead_map_active && !world_view->terminal_mode_active)
@@ -1491,6 +1466,7 @@ void render_screen(short ticks_elapsed)
 		update_fps_display(disp_pixels);
 	  }
 	  DisplayPosition(disp_pixels);
+	  DisplayNetMicStatus(disp_pixels);
 	  DisplayScores(disp_pixels);
 	}
 	DisplayMessages(disp_pixels);
@@ -1524,7 +1500,6 @@ void render_screen(short ticks_elapsed)
 				Term_Blitter.Load(*Term_Buffer);
 				Term_RenderRequest = false;
 			}
-			Term_Blitter.nearFilter = TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter;
 			Term_Blitter.Draw(TermRect);
 		}
 
@@ -1561,11 +1536,6 @@ void render_screen(short ticks_elapsed)
 			}
 		}
 
-		if (!get_keyboard_controller_status())
-		{
-			darken_world_window();
-		}
-
 		if (update_full_screen || Screen::instance()->lua_hud())
 		{
 			MainScreenUpdateRect(0, 0, 0, 0);
@@ -1580,14 +1550,7 @@ void render_screen(short ticks_elapsed)
 #ifdef HAVE_OPENGL
 	// Swap OpenGL double-buffers
 	if (screen_mode.acceleration != _no_acceleration)
-	{
-		if (!get_keyboard_controller_status())
-		{
-			darken_world_window();
-		}
-
 		OGL_SwapBuffers();
-	}
 #endif
 	
 	Movie::instance()->AddFrame(Movie::FRAME_NORMAL);
@@ -1974,7 +1937,7 @@ static inline void draw_pattern_rect(T *p, int pitch, uint32 pixel, const SDL_Re
 	}
 }
 
-static void darken_world_window(void)
+void darken_world_window(void)
 {
 	// Get world window bounds
 	SDL_Rect r = Screen::instance()->window_rect();
@@ -2014,7 +1977,7 @@ static void darken_world_window(void)
 		glPopMatrix();
 		glPopAttrib();
 
-//		MainScreenSwap();
+		MainScreenSwap();
 		return;
 	}
 #endif
@@ -2236,7 +2199,7 @@ int MainScreenPixelWidth()
 		SDL_GL_GetDrawableSize(main_screen, &w, &dummy);
 	else
 #endif
-		SDL_GetRendererOutputSize(main_render, &w, &dummy);
+		SDL_GetRendererOutputSize(main_render, &w, NULL);
 	return w;
 }
 int MainScreenPixelHeight()
@@ -2248,7 +2211,7 @@ int MainScreenPixelHeight()
 		SDL_GL_GetDrawableSize(main_screen, &dummy, &h);
 	else
 #endif
-		SDL_GetRendererOutputSize(main_render, &dummy, &h);
+		SDL_GetRendererOutputSize(main_render, NULL, &h);
 	return h;
 }
 float MainScreenPixelScale()
@@ -2261,7 +2224,9 @@ bool MainScreenIsOpenGL()
 }
 void MainScreenSwap()
 {
+#ifdef HAVE_OPENGL // called only for an OpenGL screen (MainScreenIsOpenGL)
 	SDL_GL_SwapWindow(main_screen);
+#endif
 }
 void MainScreenCenterMouse()
 {
@@ -2272,10 +2237,6 @@ void MainScreenCenterMouse()
 SDL_Surface *MainScreenSurface()
 {
 	return main_surface;
-}
-SDL_Window* MainScreenWindow()
-{
-	return main_screen;
 }
 void MainScreenUpdateRect(int x, int y, int w, int h)
 {

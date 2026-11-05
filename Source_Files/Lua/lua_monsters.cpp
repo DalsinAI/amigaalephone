@@ -35,6 +35,8 @@ LUA_MONSTERS.CPP
 #define DONT_REPEAT_DEFINITIONS
 #include "monster_definitions.h"
 
+#ifdef HAVE_LUA
+
 const float AngleConvert = 360/float(FULL_CIRCLE);
 
 static inline bool powerOfTwo(int32 x)
@@ -114,11 +116,6 @@ static int Lua_MonsterType_Enemies_Set(lua_State *L)
 
 const luaL_Reg Lua_MonsterType_Enemies_Metatable[] = {
 	{"__index", Lua_MonsterType_Enemies_Get},
-	{0, 0}
-};
-
-const luaL_Reg Lua_MonsterType_Enemies_Metatable_Mutable[] = {
-	{"__index", Lua_MonsterType_Enemies_Get},
 	{"__newindex", Lua_MonsterType_Enemies_Set},
 	{0, 0}
 };
@@ -158,11 +155,6 @@ static int Lua_MonsterType_Friends_Set(lua_State *L)
 }
 
 const luaL_Reg Lua_MonsterType_Friends_Metatable[] = {
-	{"__index", Lua_MonsterType_Friends_Get},
-	{0, 0}
-};
-
-const luaL_Reg Lua_MonsterType_Friends_Metatable_Mutable[] = {
 	{"__index", Lua_MonsterType_Friends_Get},
 	{"__newindex", Lua_MonsterType_Friends_Set},
 	{0, 0}
@@ -205,11 +197,6 @@ static int Lua_MonsterType_Immunities_Set(lua_State *L)
 
 const luaL_Reg Lua_MonsterType_Immunities_Metatable[] = {
 	{"__index", Lua_MonsterType_Immunities_Get},
-	{0, 0}
-};
-
-const luaL_Reg Lua_MonsterType_Immunities_Metatable_Mutable[] = {
-	{"__index", Lua_MonsterType_Immunities_Get},
 	{"__newindex", Lua_MonsterType_Immunities_Set},
 	{0, 0}
 };
@@ -250,11 +237,6 @@ int Lua_MonsterType_Weaknesses_Set(lua_State *L)
 }
 
 const luaL_Reg Lua_MonsterType_Weaknesses_Metatable[] = {
-	{"__index", Lua_MonsterType_Weaknesses_Get},
-	{0, 0}
-};
-
-const luaL_Reg Lua_MonsterType_Weaknesses_Metatable_Mutable[] = {
 	{"__index", Lua_MonsterType_Weaknesses_Get},
 	{"__newindex", Lua_MonsterType_Weaknesses_Set},
 	{0, 0}
@@ -706,6 +688,7 @@ int Lua_Monster_Delete(lua_State* L)
 	monster->action = _monster_is_dying_soft; // to prevent aggressors from
 											  // relocking, per monsters.cpp
 	monster_died(monster_index);
+	auto object = get_object_data(monster->object_index);
 	remove_map_object(monster->object_index);
 
 	/* recover original type and notify the object stuff a monster died */
@@ -783,7 +766,7 @@ int Lua_Monster_Move_By_Path(lua_State *L)
 
 	destination = get_polygon_data(polygon_index)->center;
 	
-	monster->path = new_path(&object->location, object->polygon, &destination, polygon_index, 3 * definition->radius, monster_pathfinding_cost_function, &path);
+	monster->path = new_path((world_point2d *) &object->location, object->polygon, &destination, polygon_index, 3 * definition->radius, monster_pathfinding_cost_function, &path);
 	if (monster->path == NONE)
 	{
 		if (monster->action != _monster_is_being_hit || MONSTER_IS_DYING(monster))
@@ -1061,16 +1044,23 @@ static int Lua_Monster_Set_Vitality(lua_State *L)
 }
 
 const luaL_Reg Lua_Monster_Get[] = {
+	{"accelerate", L_TableFunction<Lua_Monster_Accelerate>},
 	{"action", Lua_Monster_Get_Action},
 	{"active", Lua_Monster_Get_Active},
+	{"attack", L_TableFunction<Lua_Monster_Attack>},
 	{"blind", Lua_Monster_Get_Flag<_monster_is_blind>},
+	{"damage", L_TableFunction<Lua_Monster_Damage>},
 	{"deaf", Lua_Monster_Get_Flag<_monster_is_deaf>},
+	{"delete", L_TableFunction<Lua_Monster_Delete>},
 	{"external_velocity", Lua_Monster_Get_External_Velocity},
 	{"facing", Lua_Monster_Get_Facing},
 	{"life", Lua_Monster_Get_Vitality},
 	{"mode", Lua_Monster_Get_Mode},
+	{"move_by_path", L_TableFunction<Lua_Monster_Move_By_Path>},
 	{"player", Lua_Monster_Get_Player},
+	{"play_sound", L_TableFunction<Lua_Monster_Play_Sound>},
 	{"polygon", Lua_Monster_Get_Polygon},
+	{"position", L_TableFunction<Lua_Monster_Position>},
 	{"teleports_out", Lua_Monster_Get_Flag<_monster_teleports_out_when_deactivated>},
 	{"type", Lua_Monster_Get_Type},
 	{"valid", Lua_Monster_Get_Valid},
@@ -1081,21 +1071,6 @@ const luaL_Reg Lua_Monster_Get[] = {
 	{"y", Lua_Monster_Get_Y},
 	{"yaw", Lua_Monster_Get_Facing},
 	{"z", Lua_Monster_Get_Z},
-	{0, 0}
-};
-
-const luaL_Reg Lua_Monster_Get_Mutable[] = {
-	{"accelerate", L_TableFunction<Lua_Monster_Accelerate>},
-	{"attack", L_TableFunction<Lua_Monster_Attack>},
-	{"damage", L_TableFunction<Lua_Monster_Damage>},
-	{"delete", L_TableFunction<Lua_Monster_Delete>},
-	{"move_by_path", L_TableFunction<Lua_Monster_Move_By_Path>},
-	{"position", L_TableFunction<Lua_Monster_Position>},
-	{0, 0}
-};
-
-const luaL_Reg Lua_Monster_Get_Sound[] = {
-	{"play_sound", L_TableFunction<Lua_Monster_Play_Sound>},
 	{0, 0}
 };
 
@@ -1163,7 +1138,7 @@ const luaL_Reg Lua_Monsters_Methods[] = {
 
 static void compatibility(lua_State *L);
 
-int Lua_Monsters_register(lua_State *L, const LuaMutabilityInterface& m)
+int Lua_Monsters_register(lua_State *L)
 {
 	Lua_MonsterClass::Register(L, 0, 0, 0, Lua_MonsterClass_Mnemonics);
 	Lua_MonsterClass::Valid = Lua_MonsterClass_Valid;
@@ -1171,21 +1146,12 @@ int Lua_Monsters_register(lua_State *L, const LuaMutabilityInterface& m)
 	Lua_MonsterClasses::Register(L);
 	Lua_MonsterClasses::Length = Lua_MonsterClasses::ConstantLength(_class_yeti_bit + 1);
 
-	if (m.world_mutable())
-	{
-		Lua_MonsterType_Enemies::Register(L, 0, 0, Lua_MonsterType_Enemies_Metatable_Mutable);
-		Lua_MonsterType_Friends::Register(L, 0, 0, Lua_MonsterType_Friends_Metatable_Mutable);
-		Lua_MonsterType_Immunities::Register(L, 0, 0, Lua_MonsterType_Immunities_Metatable_Mutable);
-		Lua_MonsterType_Weaknesses::Register(L, 0, 0, Lua_MonsterType_Weaknesses_Metatable_Mutable);
-	}
-	else
-	{
-		Lua_MonsterType_Enemies::Register(L, 0, 0, Lua_MonsterType_Enemies_Metatable);
-		Lua_MonsterType_Friends::Register(L, 0, 0, Lua_MonsterType_Friends_Metatable);
-		Lua_MonsterType_Immunities::Register(L, 0, 0, Lua_MonsterType_Immunities_Metatable);
-		Lua_MonsterType_Weaknesses::Register(L, 0, 0, Lua_MonsterType_Weaknesses_Metatable);
-	}
-	
+
+	Lua_MonsterType_Enemies::Register(L, 0, 0, Lua_MonsterType_Enemies_Metatable);
+	Lua_MonsterType_Friends::Register(L, 0, 0, Lua_MonsterType_Friends_Metatable);
+	Lua_MonsterType_Immunities::Register(L, 0, 0, Lua_MonsterType_Immunities_Metatable);
+	Lua_MonsterType_Weaknesses::Register(L, 0, 0, Lua_MonsterType_Weaknesses_Metatable);
+
 	Lua_MonsterMode::Register(L, 0, 0, 0, Lua_MonsterMode_Mnemonics);
 	Lua_MonsterMode::Valid = Lua_MonsterMode::ValidRange(NUMBER_OF_MONSTER_MODES);
 	Lua_MonsterModes::Register(L);
@@ -1196,38 +1162,16 @@ int Lua_Monsters_register(lua_State *L, const LuaMutabilityInterface& m)
 	Lua_MonsterActions::Register(L);
 	Lua_MonsterActions::Length = Lua_MonsterActions::ConstantLength(NUMBER_OF_MONSTER_ACTIONS);
 
-	if (m.world_mutable())
-	{
-		Lua_MonsterType::Register(L, Lua_MonsterType_Get, Lua_MonsterType_Set, 0, Lua_MonsterType_Mnemonics);
-	}
-	else
-	{
-		Lua_MonsterType::Register(L, Lua_MonsterType_Get, 0, 0, Lua_MonsterType_Mnemonics);
-	}
+	Lua_MonsterType::Register(L, Lua_MonsterType_Get, Lua_MonsterType_Set, 0, Lua_MonsterType_Mnemonics);
 	Lua_MonsterType::Valid = Lua_MonsterType_Valid;
 	
 	Lua_MonsterTypes::Register(L);
 	Lua_MonsterTypes::Length = Lua_MonsterTypes::ConstantLength(NUMBER_OF_MONSTER_TYPES);
 
-	Lua_Monster::Register(L, Lua_Monster_Get);
-	if (m.world_mutable())
-	{
-		Lua_Monster::RegisterAdditional(L, Lua_Monster_Get_Mutable, Lua_Monster_Set);
-	}
-	if (m.world_mutable() || m.sound_mutable())
-	{
-		Lua_Monster::RegisterAdditional(L, Lua_Monster_Get_Sound);
-	}
+	Lua_Monster::Register(L, Lua_Monster_Get, Lua_Monster_Set);
 	Lua_Monster::Valid = Lua_Monster_Valid;
 
-	if (m.world_mutable())
-	{
-		Lua_Monsters::Register(L, Lua_Monsters_Methods);
-	}
-	else
-	{
-		Lua_Monsters::Register(L);
-	}
+	Lua_Monsters::Register(L, Lua_Monsters_Methods);
 	Lua_Monsters::Length = std::bind(get_dynamic_limit, (int) _dynamic_limit_monsters);
 
 	compatibility(L);
@@ -1273,3 +1217,7 @@ static void compatibility(lua_State *L)
 	luaL_loadbuffer(L, compatibility_script, strlen(compatibility_script), "monsters_compatibility");
 	lua_pcall(L, 0, 0, 0);
 }
+
+
+
+#endif

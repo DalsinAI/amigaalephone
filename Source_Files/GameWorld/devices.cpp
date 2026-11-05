@@ -228,7 +228,7 @@ static bool line_is_within_range(short monster_index, short line_index, world_di
 
 static bool switch_can_be_toggled(short line_index, bool player_hit, bool *should_destroy_switch);
 
-static void play_control_panel_sound(short side_index, short sound_index, bool soft_rewind = false);
+static void play_control_panel_sound(short side_index, short sound_index);
 
 static bool get_recharge_status(short side_index);
 
@@ -372,7 +372,7 @@ void update_control_panels(
 				if (still_in_use)
 				{
 					set_control_panel_texture(side);
-					play_control_panel_sound(side_index, _activating_sound, true);
+					play_control_panel_sound(side_index, _activating_sound);
 				}
 				else
 				{
@@ -503,8 +503,6 @@ void try_and_toggle_control_panel(
 						make_sound= set_tagged_light_statuses(side->control_panel_permutation, state);
 						if (try_and_change_tagged_platform_states(side->control_panel_permutation, state)) make_sound= true;
 						if (!side->control_panel_permutation) make_sound= true;
-						if (film_profile.chip_insertion_ignores_tag_state &&
-							definition->item != NONE) make_sound = true;
 						if (make_sound)
 						{
 							SET_CONTROL_PANEL_STATUS(side, state);
@@ -568,14 +566,14 @@ short find_action_key_target(
 	*target_type = _target_is_unrecognized;
 
 	/* Should we use this one, the physics one, or the object one? */
-	ray_to_line_segment(&player->location, &destination, player->facing, range);
+	ray_to_line_segment((world_point2d *) &player->location, &destination, player->facing, range);
 
 //	dprintf("#%d(#%d,#%d) --> (#%d,#%d) (#%d along #%d)", current_polygon, player->location.x, player->location.y, destination.x, destination.y, range, player->facing);
 
 	itemhit= NONE;
 	while (!done)
 	{
-		line_index= find_line_crossed_leaving_polygon(current_polygon, &player->location, &destination);
+		line_index= find_line_crossed_leaving_polygon(current_polygon, (world_point2d *) &player->location, &destination);
 		
 		if (line_index==NONE)
 		{
@@ -744,11 +742,7 @@ static void	change_panel_state(
 			player->control_panel_side_index= player->control_panel_side_index==panel_side_index ? NONE : panel_side_index;
 			state= get_recharge_status(panel_side_index);
 			SET_CONTROL_PANEL_STATUS(side, state);
-			if (!state)
-			{
-				set_control_panel_texture(side);
-				SoundManager::instance()->StopSound(NONE, definition->sounds[_activating_sound]);
-			}
+			if (!state) set_control_panel_texture(side);
                                 // Lua script hook
                                 if (player -> control_panel_side_index == panel_side_index)
                                     L_Call_Start_Refuel (definition->_class, player_index, panel_side_index);
@@ -756,15 +750,8 @@ static void	change_panel_state(
                                     L_Call_End_Refuel (definition->_class, player_index, panel_side_index);
 			break;
 		case _panel_is_computer_terminal:
-			if (get_game_state()==_game_in_progress)
+			if (get_game_state()==_game_in_progress && !PLAYER_HAS_CHEATED(player) && !PLAYER_HAS_MAP_OPEN(player))
 			{
-				bool is_overhead_map_active = PLAYER_HAS_MAP_OPEN(player);
-				if (is_overhead_map_active && !film_profile.overhead_map_terminal)
-					break;
-
-				SET_PLAYER_MAP_STATUS(player, false);
-				SET_PLAYER_HAD_OVERHEAD_MAP_STATUS(player, is_overhead_map_active);
-
                                 //MH: Lua script hook
                                 L_Call_Terminal_Enter(side->control_panel_permutation,player_index);
 				
@@ -807,7 +794,7 @@ static void	change_panel_state(
 			
 			break;
 		case _panel_is_pattern_buffer:
-                        if (player_controlling_game())
+                        if (player_controlling_game() && !PLAYER_HAS_CHEATED(local_player))
                         {
                                 if(game_is_networked)
                                 {
@@ -902,8 +889,7 @@ static bool switch_can_be_toggled(
 
 static void play_control_panel_sound(
 	short side_index,
-	short sound_index,
-	bool soft_rewind)
+	short sound_index)
 {
 	struct side_data *side= get_side_data(side_index);
 	struct control_panel_definition *definition= get_control_panel_definition(side->control_panel_type);
@@ -913,7 +899,7 @@ static void play_control_panel_sound(
 
 	if (!(sound_index>=0 && sound_index<NUMBER_OF_CONTROL_PANEL_SOUNDS)) return;
 	
-	play_side_sound(side_index, definition->sounds[sound_index], definition->sound_frequency, soft_rewind);
+	_play_side_sound(side_index, definition->sounds[sound_index], definition->sound_frequency);
 }
 
 static bool get_recharge_status(

@@ -26,8 +26,8 @@
 #include "FileHandler.h"
 #include "SoundFile.h"
 #include "world.h"
-#include "SoundPlayer.h"
-#include <set>
+
+#include "SoundManagerEnums.h"
 
 struct ambient_sound_data;
 
@@ -42,7 +42,6 @@ public:
 	static constexpr float MINIMUM_VOLUME_DB = -40.f;
 	static constexpr float DEFAULT_MUSIC_LEVEL_DB = -12.f;
 	static constexpr float DEFAULT_VIDEO_EXPORT_VOLUME_DB = -8.f;
-	static constexpr int MAX_SOUNDS_FOR_SOURCE = 3;
 	
 	static inline SoundManager* instance() { 
 		static SoundManager *m_instance = 0;
@@ -60,21 +59,28 @@ public:
 
 	bool AdjustVolumeUp(short sound_index = NONE);
 	bool AdjustVolumeDown(short sound_index = NONE);
+	void TestVolume(float db, short sound_index);
 
 	bool LoadSound(short sound);
 	void LoadSounds(short *sounds, short count);
 
+	void OrphanSound(short identifier);
+
 	void UnloadSound(short sound);
 	void UnloadAllSounds();
+	bool CanRestartSound(int baseTick);
 
-	std::shared_ptr<SoundPlayer> PlaySound(LoadedResource& rsrc, const SoundParameters& parameters);
-	std::shared_ptr<SoundPlayer> PlaySound(short sound_index, world_location3d *source, short identifier, _fixed pitch = _normal_frequency, bool soft_rewind = false);
-	std::shared_ptr<SoundPlayer> DirectPlaySound(short sound_index, angle direction, short volume, _fixed pitch);
+	void PlaySound(short sound_index, world_location3d *source, short identifier, _fixed pitch = _normal_frequency);
+	void PlayLocalSound(short sound_index, _fixed pitch = _normal_frequency) { PlaySound(sound_index, 0, NONE, pitch); }
+	void DirectPlaySound(short sound_index, angle direction, short volume, _fixed pitch);
+	bool SoundIsPlaying(short sound_index);
 
 	void StopSound(short identifier, short sound_index);
-	void StopAllSounds();
+	void StopAllSounds() { StopSound(NONE, NONE); }
 
-	void UpdateListener();
+	inline int16 GetNetmicVolumeAdjustment() {
+		return (parameters.volume_while_speaking);
+	}
 
 	void Idle();
 
@@ -92,33 +98,54 @@ public:
 	// random sounds
 	short RandomSoundIndexToSoundIndex(short random_sound_index);
 
-	static uint64_t GetCurrentAudioTick();
-	static float From_db(float db, bool music = false) { return db <= (SoundManager::MINIMUM_VOLUME_DB / (music ? 2 : 1)) ? 0 : std::pow(10.f, db / 20.f); }
-
 	struct Parameters
 	{
+#ifdef __amigaos__
+		static const int DEFAULT_RATE = 22050; // Marathon's own rate; half the 68k's mixing
+#else
 		static const int DEFAULT_RATE = 44100;
+#endif
 		static const int DEFAULT_SAMPLES = 1024;
+		int16 channel_count; // >= 0
 		float volume_db; // db
-		uint16 flags; // dynamic_tracking, etc. 
+		uint16 flags; // stereo, dynamic_tracking, etc. 
 		
 		uint16 rate; // in Hz
 		uint16 samples; // size of buffer
 
 		float music_db; // music volume in dB
 
-		float video_export_volume_db;
+		int16 volume_while_speaking; // [0, NUMBER_OF_SOUND_VOLUME_LEVELS)
+		bool mute_while_transmitting;
 
-		ChannelType channel_type;
+		float video_export_volume_db;
 
 		Parameters();
 		bool Verify();
 	} parameters;
 
-	struct SoundVolumes
+	struct Channel
 	{
-		short volume = 0, left_volume = 0, right_volume = 0;
+		uint16 flags;
+		
+		short sound_index; // sound_index being played in this channel
+		short identifier; // unique sound identifier for the sound being played in this channel (object_index)
+		struct Variables
+		{
+			short volume = 0, left_volume = 0, right_volume = 0;
+			short priority = 0;
+		} variables; // variables of the sound being played
+
+		world_location3d *dynamic_source; // can be NULL for immobile sounds
+		world_location3d source; // must be valid
+
+		uint32 start_tick;
+
+		int mixer_channel;
+		short callback_count;
 	};
+
+	void IncrementChannelCallbackCount(int channel) { channels[channel].callback_count++; } // fix this
 
 	bool IsActive() { return active; }
 	bool IsInitialized() { return initialized; }
@@ -126,26 +153,36 @@ public:
 private:
 	SoundManager();
 	void SetStatus(bool active);
+
 	SoundDefinition* GetSoundDefinition(short sound_index);
-	std::shared_ptr<SoundPlayer> BufferSound(SoundParameters& parameters);
-	float CalculatePitchModifier(short sound_index, _fixed pitch_modifier);
+	void BufferSound(Channel &, short sound_index, _fixed pitch, bool ext_play_immed = true);
+
+	Channel *BestChannel(short sound_index, Channel::Variables& variables);
+	void FreeChannel(Channel &);
+
+	void UnlockLockedSounds();
+
+	void CalculateSoundVariables(short sound_index, world_location3d *source, Channel::Variables& variables);
+	void CalculateInitialSoundVariables(short sound_index, world_location3d *source, Channel::Variables& variables);
+	void InstantiateSoundVariables(Channel::Variables& variables, Channel& channel, bool first_time);
+
+	_fixed CalculatePitchModifier(short sound_index, _fixed pitch_modifier);
 	void AngleAndVolumeToStereoVolume(angle delta, short volume, short *right_volume, short *left_volume);
+
 	short GetRandomSoundPermutation(short sound_index);
-	uint16 GetSoundObstructionFlags(short sound_index, world_location3d* source);
+
+	void TrackStereoSounds();
 	void UpdateAmbientSoundSources();
-	void ManagePlayers();
-	std::set<std::shared_ptr<SoundPlayer>> sound_players;
-	std::set<std::shared_ptr<SoundPlayer>> ambient_sound_players;
+
 	bool initialized;
 	bool active;
-	static void CleanInactivePlayers(std::set<std::shared_ptr<SoundPlayer>>& players);
-	void CalculateSoundVariables(short sound_index, world_location3d* source, SoundVolumes& variables);
-	void CalculateInitialSoundVariables(short sound_index, world_location3d* source, SoundVolumes& variables);
-	std::shared_ptr<SoundPlayer> GetSoundPlayer(short identifier, short source_identifier, bool sound_identifier_only = false) const;
-	std::shared_ptr<SoundPlayer> UpdateExistingPlayer(const Sound& sound, const SoundParameters& soundParameters, float simulatedVolume);
-	std::shared_ptr<SoundPlayer> ManageSound(const Sound& sound, const SoundParameters& parameters);
+
+	short total_channel_count;
+
 	short sound_source; // 8-bit, 16-bit
 	
+	std::vector<Channel> channels;
+
 	std::unique_ptr<SoundFile> sound_file;
 	SoundMemoryManager* sounds;
 
@@ -156,6 +193,7 @@ private:
 	static const int MAXIMUM_SOUND_BUFFER_SIZE = 1*MEG;
 
 	// channels
+	static const int MAXIMUM_SOUND_CHANNELS = 32;
 	static const int MAXIMUM_AMBIENT_SOUND_CHANNELS = 4;
 	static const int MAXIMUM_PROCESSED_AMBIENT_SOUNDS = 5;
 
@@ -191,7 +229,7 @@ typedef void (*add_ambient_sound_source_proc_ptr)(ambient_sound_data *ambient_so
 world_location3d *_sound_listener_proc(void);
 
 /* _sound_obstructed_proc() tells whether the given sound is obstructed or not */
-uint16 _sound_obstructed_proc(world_location3d *source, bool distinguish_obstruction_types = false);
+uint16 _sound_obstructed_proc(world_location3d *source);
 
 void _sound_add_ambient_sources_proc(void *data, add_ambient_sound_source_proc_ptr add_one_ambient_sound_source);
 

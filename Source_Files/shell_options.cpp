@@ -11,6 +11,7 @@
 #ifdef __WIN32__
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#undef CreateDirectory
 #endif
 
 static void print_usage();
@@ -67,18 +68,37 @@ static std::ostream& operator<<(std::ostream& s, const ShellOptionsOption& o) {
 }
 
 struct ShellOptionsCommand : public ShellOptionsOption {
+	// once we switch to C++17 this can go away and we can use aggregate
+	// initializers
+	ShellOptionsCommand(std::string short_name, std::string long_name, std::string help, std::function<void()> command_) :
+		ShellOptionsOption{short_name, long_name, help},
+		command{command_}
+		{ }
+	
 	std::function<void()> command;
 };
 
 struct ShellOptionsFlag : public ShellOptionsOption {
+	// once we switch to C++17 this can go away and we can use aggregate
+	// initializers
+	ShellOptionsFlag(std::string short_name, std::string long_name, std::string help, bool& flag_) :
+		ShellOptionsOption{short_name, long_name, help},
+		flag{flag_}
+		{ }
+	
 	bool& flag;
 };
 
 struct ShellOptionsString : public ShellOptionsOption {
+	// once we switch to C++17 this can go away and we can use aggregate
+	// initializers
+	ShellOptionsString(std::string short_name, std::string long_name, std::string help, std::string& string_) :
+		ShellOptionsOption{short_name, long_name, help},
+		string{string_}
+		{ }
+
 	std::string& string;
 };
-
-static std::string ignore;
 
 static const std::vector<ShellOptionsCommand> shell_options_commands {
 	{"h", "help", "Display this help message", print_usage},
@@ -95,17 +115,14 @@ static const std::vector<ShellOptionsFlag> shell_options_flags {
 	{"j", "nojoystick", "Do not initialize joysticks", shell_options.nojoystick},
 	{"i", "insecure_lua", "", shell_options.insecure_lua},
 	{"Q", "skip-intro", "Skip intro screens", shell_options.skip_intro},
-	{"e", "editor", "Use editor prefs; jump directly to map", shell_options.editor},
-	{"", "no-chooser", "Disable the scenario chooser", shell_options.no_chooser}
+	{"e", "editor", "Use editor prefs; jump directly to map", shell_options.editor}
 };
 
 static const std::vector<ShellOptionsString> shell_options_strings {
-	{"o", "output", "With -e, output to [file] and exit on quit", shell_options.output},
-	{"l", "replay-directory", "Directory with replays to load", shell_options.replay_directory},
-	{"NSDocumentRevisionsDebugMode", "", "", ignore} // annoying Xcode argument
+	{"o", "output", "With -e, output to [file] and exit on quit", shell_options.output}
 };
 
-std::unordered_map<int, bool> ShellOptions::parse(int argc, char** argv, bool ignore_unknown_args)
+bool ShellOptions::parse(int argc, char** argv)
 {
 	shell_options.program_name = argv[0];
 	--argc;
@@ -127,16 +144,13 @@ std::unordered_map<int, bool> ShellOptions::parse(int argc, char** argv, bool ig
         ++argv;
     }
 
-	std::unordered_map<int, bool> results;
-
-    for (int i = 0; i < args.size(); i++)
+    for (auto it = args.begin(); it != args.end(); ++it)
     {
-		const auto& arg = args[i];
 		bool found = false;
 
 		for (auto command : shell_options_commands)
 		{
-			if (command.match(arg))
+			if (command.match(*it))
 			{
 				command.command();
 				exit(0);
@@ -145,7 +159,7 @@ std::unordered_map<int, bool> ShellOptions::parse(int argc, char** argv, bool ig
 
 		for (auto flag : shell_options_flags)
 		{
-			if (flag.match(arg))
+			if (flag.match(*it))
 			{
 				found = true;
 				flag.flag = true;
@@ -155,18 +169,17 @@ std::unordered_map<int, bool> ShellOptions::parse(int argc, char** argv, bool ig
 
 		for (auto option : shell_options_strings)
 		{
-			if (option.match(arg))
+			if (option.match(*it))
 			{
-				if (i < args.size() - 1 && args[i + 1][0] != '-')
-				{
+                if (it != args.end() && (*(++it))[0] != '-')
+                {
 					found = true;
-					results.insert({ i++ + 1, true });
-                    option.string = args[i];
+                    option.string = *it;
                 }
                 else
                 {
-					logFatal("%s requires an additional argument", arg.c_str());
-                    printf("%s requires an additional argument\n", arg.c_str());
+					logFatal("%s requires an additional argument", it->c_str());
+                    printf("%s requires an additional argument\n", it->c_str());
                     print_usage();
                     exit(1);
                 }
@@ -175,37 +188,29 @@ std::unordered_map<int, bool> ShellOptions::parse(int argc, char** argv, bool ig
 
 		if (!found)
 		{
-			if (arg[0] != '-')
+			if ((*it)[0] != '-')
 			{
-				FileSpecifier f(arg);
-				if (f.Exists())
+				FileSpecifier f(*it);
+				if (f.IsDir())
 				{
-					if (f.IsDir())
-					{
-						shell_options.directory = arg;
-					}
-					else
-					{
-						shell_options.files.push_back(arg);
-					}
-
-					found = true;
+					shell_options.directory = *it;
+				}
+				else
+				{
+					shell_options.files.push_back(*it);
 				}
 			}
-
-			if (!found && !ignore_unknown_args)
+			else
 			{
-				logFatal("Unrecognized argument '%s'.", arg.c_str());
-				printf("Unrecognized argument '%s'.\n", arg.c_str());
+				logFatal("Unrecognized argument '%s'.", it->c_str());
+				printf("Unrecognized argument '%s'.\n", it->c_str());
 				print_usage();
 				exit(1);
 			}
 		}
-
-		results.insert({ i + 1, found });
 	}
 
-	return results;
+	return true;
 }
 
 void print_version()

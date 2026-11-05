@@ -104,11 +104,6 @@ struct point2d
 /* ignore multiple shading tables if set */
 #define _SHADELESS_BIT 0x8000
 
-// for scaling floor/ceiling
-#define _SCALE_2X_BIT   0x0001
-#define _SCALE_4X_BIT   0x0002
-#define _SCALE_BITS		0x0003
-
 class OGL_ModelData;
 
 struct rectangle_definition
@@ -117,7 +112,7 @@ struct rectangle_definition
 	
 	struct bitmap_definition *texture;
 	
-	/* screen coordinates; x0 <= x1, y0 <= y1 */
+	/* screen coordinates; x0<x1, y0<y1 */
 	int16 x0, y0;
 	int16 x1, y1;
 

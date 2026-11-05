@@ -85,7 +85,11 @@ typedef uint8 byte;
 
 // Make it compile on systems without OpenGL
 #ifndef HAVE_OPENGL
+#ifdef __amigaos__
+typedef float GLfloat; // OpenGPU's SDL_opengl.h has the same typedef
+#else
 #define GLfloat float
+#endif
 #endif
 
 #endif

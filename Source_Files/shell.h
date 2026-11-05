@@ -40,7 +40,6 @@ Dec 29, 2000 (Loren Petrich):
 */
 
 #include "cstypes.h"
-#include <string>
 
 class FileSpecifier;
 struct RGBColor;
@@ -57,13 +56,6 @@ enum {
 	_save_replay_prompt,
 	_select_replay_prompt,
 	_default_prompt
-};
-
-enum class BobbingType
-{
-	none,
-	camera_and_weapon,
-	weapon_only
 };
 
 /* ---------- structures */
@@ -88,7 +80,7 @@ struct screen_mode_data
 	short term_scale_level;
 	bool fix_h_not_v;
 	bool translucent_map;
-	BobbingType bobbing_type;
+	bool camera_bob;
 
 	int fov; // 0 = use default (or MML/plugin)
 };
@@ -108,8 +100,12 @@ enum // input devices
 
 void global_idle_proc(void);
 
+class InfoTree;
+void parse_mml_cheats(const InfoTree& root);
+void reset_mml_cheats();
+
 // Load the base MML scripts:
-void LoadBaseMMLScripts(bool load_menu_mml_only);
+void LoadBaseMMLScripts();
 
 // Application and directory info:
 char *expand_symbolic_paths(char *dest, const char *src, int maxlen);
@@ -155,9 +151,5 @@ void load_environment_from_preferences(void);
 // Implemented in the "screen" routines
 void screen_printf(const char *format, ...);
 
-void main_event_loop(void);
-void initialize_application(void);
-void shutdown_application(void);
-bool handle_open_document(const std::string& filename);
 
 #endif

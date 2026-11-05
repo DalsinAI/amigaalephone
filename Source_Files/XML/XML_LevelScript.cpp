@@ -66,7 +66,9 @@ struct LevelScriptCommand
 		MML,
 		Music,
 		Movie,
+#ifdef HAVE_LUA
 		Lua,
+#endif /* HAVE_LUA */
 #ifdef HAVE_OPENGL
 		LoadScreen
 #endif
@@ -134,6 +136,14 @@ static std::map<int, LevelScriptHeader> LevelScripts;
 // Current script for adding commands to and for running
 static LevelScriptHeader *CurrScriptPtr = NULL;
 
+// Map-file parent directory (where all map-related files are supposed to live)
+static DirectorySpecifier MapParentDir;
+
+#ifdef HAVE_LUA
+// Same for Lua
+static bool LuaFound = false;
+#endif /* HAVE_LUA */
+
 // Movie filespec and whether it points to a real file
 static FileSpecifier MovieFile;
 static bool MovieFileExists = false;
@@ -145,7 +155,6 @@ static float MovieSize = NONE;
 // (defaults from interface.cpp)
 short EndScreenIndex = 99;
 short NumEndScreens = 1;
-std::string EndScreenMusic;
 
 
 // The level-script parsers are separate from the main MML ones,
@@ -166,6 +175,9 @@ extern bool get_text_resource_from_scenario(int resource_number, LoadedResource&
 // Loads all those in resource 128 in a map file (or some appropriate equivalent)
 void LoadLevelScripts(FileSpecifier& MapFile)
 {
+	// Because all the files are to live in the map file's parent directory
+	MapFile.ToDirectory(MapParentDir);
+	
 	// Get rid of the previous level script
 	// ghs: unless it's the first time, in which case we would be clearing
 	// any external level scripts, so don't
@@ -178,7 +190,6 @@ void LoadLevelScripts(FileSpecifier& MapFile)
 	// Set these to their defaults before trying to change them
 	EndScreenIndex = 99;
 	NumEndScreens = 1;
-	EndScreenMusic = "";
 	
 	// OpenedResourceFile OFile;
 	// if (!MapFile.Open(OFile)) return;
@@ -195,13 +206,13 @@ void LoadLevelScripts(FileSpecifier& MapFile)
 	try {
 		InfoTree root = InfoTree::load_xml(strm).get_child("marathon_levels");
 		parse_levels_xml(root);
-	} catch (const InfoTree::parse_error& e) {
+	} catch (InfoTree::parse_error e) {
 		logError("Error parsing map script in %s: %s", MapFile.GetPath(), e.what());
-	} catch (const InfoTree::path_error& e) {
+	} catch (InfoTree::path_error e) {
 		logError("Error parsing map script in %s: %s", MapFile.GetPath(), e.what());
-	} catch (const InfoTree::data_error& e) {
+	} catch (InfoTree::data_error e) {
 		logError("Error parsing map script in %s: %s", MapFile.GetPath(), e.what());
-	} catch (const InfoTree::unexpected_error& e) {
+	} catch (InfoTree::unexpected_error e) {
 		logError("Error parsing map script in %s: %s", MapFile.GetPath(), e.what());
 	}
 }
@@ -209,14 +220,12 @@ void LoadLevelScripts(FileSpecifier& MapFile)
 void ResetLevelScript()
 {
 	// For whatever previous music had been playing...
-	Music::instance()->Fade(0, MACHINE_TICKS_PER_SECOND/2, MusicPlayer::FadeType::Sinusoidal);
-
-	while (Music::instance()->Playing())
-		Music::instance()->Idle();
+	Music::instance()->FadeOut(MACHINE_TICKS_PER_SECOND/2);
 	
 	// If no scripts were loaded or none of them had music specified,
 	// then don't play any music
-	Music::instance()->ClearLevelPlaylist();
+	if (!Music::instance()->HasClassicLevelMusic())
+		Music::instance()->ClearLevelMusic();
 
 #ifdef HAVE_OPENGL	
 	OGL_LoadScreen::instance()->Clear();
@@ -225,8 +234,8 @@ void ResetLevelScript()
 	// reset values to engine defaults first
 	ResetAllMMLValues();
 	// then load the base stuff (from Scripts folder and whatnot)
-	LoadBaseMMLScripts(false);
-	Plugins::instance()->load_mml(false);
+	LoadBaseMMLScripts();
+	Plugins::instance()->load_mml();
 }
 
 
@@ -234,9 +243,16 @@ void ResetLevelScript()
 // runs level-specific MML...
 void RunLevelScript(int LevelIndex)
 {
+	// None found just yet...
+#ifdef HAVE_LUA
+	LuaFound = false;
+#endif /* HAVE_LUA */
+	
 	GeneralRunScript(LevelScriptHeader::Default);
 	GeneralRunScript(LevelIndex);
+	
 	Music::instance()->SeedLevelMusic();
+
 }
 
 std::vector<uint8> mmls_chunk;
@@ -302,19 +318,6 @@ void RunEndScript()
 	GeneralRunScript(LevelScriptHeader::End);
 }
 
-extern bool get_default_music_spec(FileSpecifier &file);
-
-void LoadEpilogueMusic()
-{
-	FileSpecifier File;
-	if (EndScreenMusic.empty() || !File.SetNameWithPath(EndScreenMusic.c_str()))
-	{
-		get_default_music_spec(File);
-	}
-
-	Music::instance()->SetupIntroMusic(File);
-}
-
 // Intended for restoring old parameter values, because MML sets values at a variety
 // of different places, and it may be easier to simply set stuff back to defaults
 // by including those defaults in the script.
@@ -332,7 +335,7 @@ void GeneralRunScript(int LevelIndex)
 	CurrScriptPtr = &(LevelScripts[LevelIndex]);
 	
 	// Insures that this order is the last order set
-	Music::instance()->SetPlaylistParameters(CurrScriptPtr->RandomOrder);
+	Music::instance()->LevelMusicRandom(CurrScriptPtr->RandomOrder);
 	
 	// OpenedResourceFile OFile;
 	// FileSpecifier& MapFile = get_map_file();
@@ -351,7 +354,9 @@ void GeneralRunScript(int LevelIndex)
 		switch(Cmd.Type)
 		{
 		case LevelScriptCommand::MML:
+#ifdef HAVE_LUA
 		case LevelScriptCommand::Lua:
+#endif /* HAVE_LUA */
 			// if (Cmd.RsrcPresent() && OFile.Get('T','E','X','T',Cmd.RsrcID,ScriptRsrc))
 			if (Cmd.RsrcPresent() && get_text_resource_from_scenario(Cmd.RsrcID,ScriptRsrc))
 			{
@@ -373,15 +378,20 @@ void GeneralRunScript(int LevelIndex)
 				ParseMMLFromData(Data, DataLen);
 			}
 			break;
-
-		case LevelScriptCommand::Lua:
-		{
-			// Skip if not loaded
-			if (Data == NULL || DataLen <= 0) break;
+		
+#ifdef HAVE_LUA
+                        
+			case LevelScriptCommand::Lua:
+			{
+				// Skip if not loaded
+				if (Data == NULL || DataLen <= 0) break;
 				
-			LoadLuaScript(Data, DataLen, _embedded_lua_script);
-		}
-		break;
+				// Load and indicate whether loading was successful
+				if (LoadLuaScript(Data, DataLen, _embedded_lua_script))
+					LuaFound = true;
+			}
+			break;
+#endif /* HAVE_LUA */
 		
 		case LevelScriptCommand::Music:
 			{
@@ -586,6 +596,7 @@ void parse_level_commands(InfoTree root, int index)
 		ls_ptr->Commands.push_back(cmd);
 	}
 
+#ifdef HAVE_LUA
 	for (const InfoTree &child : root.children_named("lua"))
 	{
 		LevelScriptCommand cmd;
@@ -596,6 +607,7 @@ void parse_level_commands(InfoTree root, int index)
 		
 		ls_ptr->Commands.push_back(cmd);
 	}
+#endif
 	
 	for (const InfoTree &child : root.children_named("music"))
 	{
@@ -684,6 +696,5 @@ void parse_levels_xml(InfoTree root)
 	{
 		child.read_attr("index", EndScreenIndex);
 		child.read_indexed("count", NumEndScreens, SHRT_MAX+1);
-		child.read_attr("music", EndScreenMusic);
 	}
 }

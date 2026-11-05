@@ -83,11 +83,7 @@ bool is_macbinary(SDL_RWops *f, int32 &data_length, int32 &rsrc_length)
 	// This recognizes up to macbinary III (0x81)
 	SDL_RWseek(f, 0, SEEK_SET);
 	uint8 header[128];
-	if (SDL_RWread(f, header, 1, 128) != 128)
-	{
-		return false;
-	}
-	
+	SDL_RWread(f, header, 1, 128);
 	if (header[0] || header[1] > 63 || header[74]  || header[123] > 0x81)
 		return false;
 	
@@ -164,18 +160,6 @@ static list<res_file_t *>::iterator find_res_file_t(SDL_RWops *f)
 	return res_file_list.end();
 }
 
-// external resources: terminals for Marathon 1
-OpenedResourceFile ExternalResources;
-
-void set_external_resources_file(FileSpecifier& f)
-{
-	f.Open(ExternalResources);
-}
-
-void close_external_resources()
-{
-	ExternalResources.Close();
-}
 
 /*
  *  Initialize resource management
@@ -183,7 +167,7 @@ void close_external_resources()
 
 void initialize_resources(void)
 {
-	atexit(close_external_resources);
+	// nothing to do
 }
 
 

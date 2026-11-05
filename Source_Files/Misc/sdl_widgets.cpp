@@ -185,25 +185,9 @@ void w_static_text::draw(SDL_Surface *s) const
 
 void w_label::click(int x, int y)
 {
-	// simulate a mouse press
-	mouse_down(0, 0);
-	sleep_for_machine_ticks(MACHINE_TICKS_PER_SECOND / 12);
-	mouse_up(0, 0);
-}
-
-void w_label::mouse_down(int, int)
-{
-	if (!associated_widget) return;
-	down = true;
-}
-
-void w_label::mouse_up(int x, int y)
-{
-	if (!associated_widget || !down) return;
-	down = false;
-
-	if (x >= 0 && x <= rect.w && y >= 0 && y <= rect.h)
+	if (associated_widget)
 		associated_widget->click(0, 0);
+
 }
 
 void w_label::draw(SDL_Surface *s) const
@@ -424,6 +408,13 @@ void w_hyperlink::draw(SDL_Surface *s) const
 	uint32 pixel = get_theme_color(HYPERLINK_WIDGET, state, 0);
 	
 	draw_text(s, text.c_str(), rect.x, rect.y + font->get_ascent(), pixel, font, style);
+	
+	// draw_text doesn't support underline, so draw one manually
+	if (style & styleUnderline)
+	{
+		SDL_Rect r = {rect.x, rect.y + rect.h - 1, rect.w, 1};
+		SDL_FillRect(s, &r, pixel);
+	}
 }
 
 
@@ -679,7 +670,7 @@ const uint16 MAX_TEXT_WIDTH = 200;
 // Anyway, this fixes the "crash when clicking in the Environment menu" bug we've seen
 // in the Windows version all this time.
 w_select_button::w_select_button(const char *s, action_proc p, void *a, bool u)
-	: widget(LABEL_WIDGET), selection(s), proc(p), arg(a), utf8(u), p_flags(placeable::kDefault), down(false)
+	: widget(LABEL_WIDGET), selection(s), proc(p), arg(a), utf8(u), p_flags(placeable::kDefault)
 {
 	uint16 max_selection_width = MAX_TEXT_WIDTH;
 
@@ -687,28 +678,6 @@ w_select_button::w_select_button(const char *s, action_proc p, void *a, bool u)
 	saved_min_height = font->get_line_height();
 }
 
-void w_select_button::mouse_down(int, int)
-{
-	if (!enabled) return;
-	down = true;
-}
-
-void w_select_button::mouse_up(int x, int y)
-{
-	if (!enabled || !down) return;
-	down = false;
-
-	if (proc && x >= 0 && x <= rect.w && y >= 0 && y <= rect.h)
-		proc(arg);
-}
-
-void w_select_button::click(int /*x*/, int /*y*/)
-{
-	// simulate a mouse press
-	mouse_down(0, 0);
-	sleep_for_machine_ticks(MACHINE_TICKS_PER_SECOND / 12);
-	mouse_up(0, 0);
-}
 
 
 void w_select_button::draw(SDL_Surface *s) const
@@ -727,6 +696,12 @@ void w_select_button::draw(SDL_Surface *s) const
 	if (active) {
 		//!!
 	}
+}
+
+void w_select_button::click(int /*x*/, int /*y*/)
+{
+    if(enabled)
+	    proc(arg);
 }
 
 void w_select_button::set_selection(const char *s)
@@ -776,7 +751,7 @@ w_select::w_select(size_t s, const char **l) : widget(LABEL_WIDGET), labels(l), 
         if(labels) {
             while (labels[num_labels])
                     num_labels++;
-            if (selection >= num_labels)
+            if (selection >= num_labels || selection < 0)
                     selection = 0;
         }
 
@@ -1068,9 +1043,18 @@ w_player_color::w_player_color(int selection) : w_select(selection, NULL)
 
 void w_player_color::draw(SDL_Surface *s) const
 {
-	uint32 pixel = get_dialog_player_color(selection);
-	SDL_Rect r = {rect.x, rect.y + 1, 48, rect.h - 2};
-	SDL_FillRect(s, &r, pixel);
+	int y = rect.y + font->get_ascent();
+
+	// Selection
+	if (selection >= 0) {
+		uint32 pixel = get_dialog_player_color(selection);
+		SDL_Rect r = {rect.x, rect.y + 1, 48, rect.h - 2};
+		SDL_FillRect(s, &r, pixel);
+	} else {
+		int state = enabled ? (active ? ACTIVE_STATE : DEFAULT_STATE) : DISABLED_STATE;
+
+		draw_text(s, "<unknown>", rect.x, y, get_theme_color(ITEM_WIDGET, state), font, style);
+	}
 
 	// Cursor
 	if (active)	{
@@ -1566,11 +1550,7 @@ GetSDLKeyName(SDL_Scancode inKey) {
 	else if (w_key::event_type_for_key(inKey) == w_key::JoystickButton)
 	    return get_joystick_button_key_name(inKey - AO_SCANCODE_BASE_JOYSTICK_BUTTON);
     else
-	{
-		static std::string s;
-		s = utf8_to_mac_roman(SDL_GetKeyName(SDL_GetKeyFromScancode(inKey)));
-		return s.c_str();
-	}
+        return SDL_GetScancodeName(inKey);
 }
 
 void w_key::draw(SDL_Surface *s) const
@@ -1942,7 +1922,7 @@ std::string w_percentage_slider::formatted_value()
  *  List selection
  */
 
-w_list_base::w_list_base(uint16 width, size_t lines, size_t /*sel*/) : widget(ITEM_WIDGET), selection(0), num_items(0), shown_items(lines), thumb_dragging(false), top_item(0)
+w_list_base::w_list_base(uint16 width, size_t lines, size_t /*sel*/) : widget(ITEM_WIDGET), num_items(0), shown_items(lines), thumb_dragging(false), top_item(0)
 {
 	rect.w = width;
 	rect.h = item_height() * static_cast<uint16>(shown_items) + get_theme_space(LIST_WIDGET, T_SPACE) + get_theme_space(LIST_WIDGET, B_SPACE);
@@ -2266,12 +2246,12 @@ void w_list_base::set_top_item(size_t i)
  */
 
 w_levels::w_levels(const vector<entry_point> &items, dialog *d)
-	: w_list<entry_point>(items, 400, 8, 0), parent(d), show_level_numbers(true), offset{1} {}
+	  : w_list<entry_point>(items, 400, 8, 0), parent(d), show_level_numbers(true) {}
 
 // ZZZ: new constructor gives more control over widget's appearance.
 w_levels::w_levels(const vector<entry_point>& items, dialog* d, uint16 inWidth,
         size_t inNumLines, size_t inSelectedItem, bool in_show_level_numbers)
-	: w_list<entry_point>(items, inWidth, inNumLines, inSelectedItem), parent(d), show_level_numbers(in_show_level_numbers), offset{1} {}
+	  : w_list<entry_point>(items, inWidth, inNumLines, inSelectedItem), parent(d), show_level_numbers(in_show_level_numbers) {}
 
 void
 w_levels::item_selected(void)
@@ -2286,7 +2266,7 @@ w_levels::draw_item(vector<entry_point>::const_iterator i, SDL_Surface *s, int16
 	char str[256];
 
     if(show_level_numbers)
-    	sprintf(str, "%d - %s", i->level_number + offset, i->level_name);
+    	sprintf(str, "%d - %s", i->level_number + 1, i->level_name);
     else
         sprintf(str, "%s", i->level_name);
 
@@ -2381,10 +2361,10 @@ void w_select_popup::gotSelected ()
 }
 
 
-const char* const sFileChooserInvalidFileString = "(no valid selection)";
+static const char* const sFileChooserInvalidFileString = "(no valid selection)";
 
 w_file_chooser::w_file_chooser(const char* inDialogPrompt, Typecode inTypecode)
-	: w_select_button("", std::bind(&w_file_chooser::proc, this), nullptr, true), typecode(inTypecode)
+	: w_select_button("", NULL, NULL, true), typecode(inTypecode)
 {
 	strncpy(dialog_prompt, inDialogPrompt, sizeof(dialog_prompt));
 	set_selection(sFileChooserInvalidFileString);
@@ -2402,7 +2382,7 @@ w_file_chooser::set_file(const FileSpecifier& inFile)
 
 
 void
-w_file_chooser::proc()
+w_file_chooser::click(int, int)
 {
 	if(enabled)
 	{
@@ -2422,58 +2402,15 @@ w_file_chooser::update_filename()
 {
 	if(file.Exists())
 	{
-		strncpy(filename, FileSpecifier::HideExtension(file.GetName()).c_str(), sizeof(filename));
-		filename[sizeof(filename) - 1] = '\0';
+		file.GetName(filename);
+		std::string filename_copy = filename;
+		strcpy(filename, FileSpecifier::HideExtension(filename_copy).c_str());
 		set_selection(filename);
 	}
 	else
 		set_selection(sFileChooserInvalidFileString);
 }
 
-w_directory_chooser::w_directory_chooser()
-	: w_select_button("", std::bind(&w_directory_chooser::proc, this), nullptr, true)
-{
-	set_selection(sFileChooserInvalidFileString);
-}
-
-
-
-void
-w_directory_chooser::set_directory(const FileSpecifier& inDirectory)
-{
-	directory = inDirectory;
-	update_directoryname();
-}
-
-
-
-void
-w_directory_chooser::proc()
-{
-	if (enabled)
-	{
-		if (directory.ReadDirectoryDialog())
-		{
-			update_directoryname();
-			if (m_callback)
-				m_callback();
-		}
-	}
-}
-
-
-void
-w_directory_chooser::update_directoryname()
-{
-	if (directory.Exists())
-	{
-		strncpy(directory_name, directory.GetName().c_str(), sizeof(directory_name));
-		directory_name[sizeof(directory_name) - 1] = '\0';
-		set_selection(directory_name);
-	}
-	else
-		set_selection(sFileChooserInvalidFileString);
-}
 
 const string w_items_in_room_get_name_of_item (GameListMessage::GameListEntry item)
 {
@@ -2555,9 +2492,9 @@ void w_games_in_room::draw_item(const GameListMessage::GameListEntry& item, SDL_
 			time_or_ping << "Untimed";
 		}
 	}
-	else if (item.m_description.m_latency != UINT16_MAX)
+	else
 	{
-		time_or_ping << item.m_description.m_latency << " ms";
+		// draw ping
 	}
 
 	right_text_width = text_width(time_or_ping.str().c_str(), font, game_style);

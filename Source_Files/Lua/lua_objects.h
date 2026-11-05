@@ -25,6 +25,7 @@ LUA_OBJECTS.H
 
 #include "cseries.h"
 
+#ifdef HAVE_LUA
 extern "C"
 {
 #include "lua.h"
@@ -72,6 +73,8 @@ typedef L_LazyEnum<Lua_Sound_Name> Lua_Sound;
 extern char Lua_Sounds_Name[]; // "Sounds"
 typedef L_EnumContainer<Lua_Sounds_Name, Lua_Sound> Lua_Sounds;
 
-int Lua_Objects_register(lua_State *L, const LuaMutabilityInterface& m);
+int Lua_Objects_register(lua_State *L);
+
+#endif
 
 #endif

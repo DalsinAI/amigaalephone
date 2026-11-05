@@ -51,6 +51,38 @@
 
 #include <string>
 
+
+// jkvw: I'm putting this here because we only really want it for find_item_index_in_vecotr,
+//	 and of course we shouldn't be doing that anyway :).
+bool operator==(const prospective_joiner_info &left, const prospective_joiner_info &right)
+{ return left.stream_id == right.stream_id; }
+
+
+////// helper functions //////
+// Actually, as it turns out, there should be a generic STL algorithm that does this, I think.
+// Well, w_found_players ought to be using a set<> or similar anyway, much more natural.
+// Shrug, this was what I came up with before I knew anything about STL, and I'm too lazy to change it.
+template<class T>
+static const size_t
+find_item_index_in_vector(const T& inItem, const vector<T>& inVector) {
+    typename vector<T>::const_iterator 	i	= inVector.begin();
+    typename vector<T>::const_iterator 	end	= inVector.end();
+    size_t				index	= 0;
+
+    while(i != end) {
+        if(*i == inItem)
+            return index;
+        
+        index++;
+        i++;
+    }
+    
+    // Didn't find it
+    return -1;
+}
+
+
+
 ////// w_found_players //////
 void
 w_found_players::found_player(prospective_joiner_info &player) {
@@ -86,12 +118,11 @@ void w_found_players::update_player(prospective_joiner_info &player) {
 
 void
 w_found_players::unlist_player(const prospective_joiner_info &player) {
-
-    auto player_index = std::distance(listed_players.begin(), std::find(listed_players.begin(), listed_players.end(), player));
-    if (player_index >= listed_players.size())
+    size_t theIndex = find_item_index_in_vector(player, listed_players);
+    if(theIndex == -1)
         return;
 
-    listed_players.erase(listed_players.begin() + player_index);
+    listed_players.erase(listed_players.begin() + theIndex);
     
     size_t old_top_item = top_item;
     
@@ -99,7 +130,7 @@ w_found_players::unlist_player(const prospective_joiner_info &player) {
     new_items();
     
     // If the element deleted was the top item or before the top item, shift view up an item to compensate (if there is anything "up").
-    if(player_index <= old_top_item && old_top_item > 0)
+    if(theIndex <= old_top_item && old_top_item > 0)
         old_top_item--;
     
     // Reconcile overhang, if needed.
@@ -313,7 +344,7 @@ w_players_in_game2::click(int x, int) {
 
         if(clump_players_by_team) {
             for(size_t i = 0; i < num_valid_net_rankings; i++) {
-                if(std::abs(x - get_wide_spaced_center_offset(rect.x, rect.w, i, num_valid_net_rankings))
+                if(ABS(x - get_wide_spaced_center_offset(rect.x, rect.w, i, num_valid_net_rankings))
                         < (get_wide_spaced_width(rect.w, num_valid_net_rankings) / 2))
                 {
                     if(element_clicked_callback != NULL)
@@ -327,7 +358,7 @@ w_players_in_game2::click(int x, int) {
         
         else {
             for(size_t i = 0; i < num_valid_net_rankings; i++) {
-                if(std::abs(x - get_close_spaced_center_offset(rect.x, rect.w, i, num_valid_net_rankings))
+                if(ABS(x - get_close_spaced_center_offset(rect.x, rect.w, i, num_valid_net_rankings))
                         < (get_close_spaced_width(rect.w, num_valid_net_rankings) / 2))
                 {
                     if(element_clicked_callback != NULL)
@@ -971,7 +1002,10 @@ w_entry_point_selector::gotSelected() {
 	placer->add(new w_spacer(), true);
 
         FileSpecifier   theFile(environment_preferences->map_file);
-        placer->dual_add(new w_static_text(theFile.GetName().c_str()), theDialog);
+        char            theName[256];
+        theFile.GetName(theName);
+        sprintf(temporary, "%s", theName);
+        placer->dual_add(new w_static_text(temporary), theDialog);
 
         placer->add(new w_spacer(), true);
 

@@ -23,12 +23,6 @@
 	Uniform header for all Aleph One OpenGL users
 */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#ifdef HAVE_OPENGL
-
 #ifdef __WIN32__
 
 #define GLEW_STATIC 1
@@ -42,12 +36,12 @@
 
 #include <SDL2/SDL_opengl.h>
 
-#if defined (__APPLE__) && defined(__MACH__)
+#if defined(__amigaos__)
+/* OpenGPU's kit has no GLU; the software renderer never calls it */
+#elif defined (__APPLE__) && defined(__MACH__)
 #include <OpenGL/glu.h>
 #else
 #include <GL/glu.h>
-#endif
-
 #endif
 
 #endif

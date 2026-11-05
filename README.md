@@ -4,8 +4,6 @@ Aleph One is the open source continuation of Bungie™’s _Marathon® 2_ and _M
 
 Aleph One is available under the terms of the [GNU General Public License (GPL 3)](http://www.gnu.org/licenses/gpl-3.0.html)
 
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white)](https://discord.gg/NvF3pdV)     [![Steam](https://img.shields.io/badge/steam-%23000000.svg?style=for-the-badge&logo=steam&logoColor=white)](https://store.steampowered.com/developer/alephone)
-
 # Download
 
 To download ready-to-run versions of all three _Marathon_ games for macOS,
@@ -42,7 +40,7 @@ Download, bootstrap, and install vcpkg:
 
 `cd` into Aleph One's vcpkg subdirectory and use the `install-arm-osx.sh` and `install-x64-osx.sh` scripts to install macOS dependencies for arm64 and x64.
 
-You should now be able to open `Xcode/AlephOne.xcodeproj` in Xcode and build Aleph One.
+You should now be able to open `PBProjects/AlephOne.xcodeproj` in Xcode and build Aleph One.
 
 ## Windows
 
@@ -62,7 +60,7 @@ You should now be able to build Aleph One using the `VisualStudio\AlephOne.sln` 
 
 ## Linux/FreeBSD/other
 
-Linux/FreeBSD/other builds are built using autoconf. If you downloaded a source tarball, the configure system is already set up for you. If you cloned from git, you first need to set up the configure system. Install `autoconf` and `autoconf-archive` from your distro package manager, then:
+Linux/FreeBSD/other builds are built using autoconf. If you downloaded a source tarball, the configure system is already set up for you. If you cloned from git, you first need to set up the configure system. Install autoconf and autoconf-archive from your distro package manager, then:
 
     autoreconf -i
 
@@ -70,25 +68,22 @@ Linux/FreeBSD/other builds are built using autoconf. If you downloaded a source 
 
 Aleph One requires a C++17 compiler and the following libraries:
 
-+ `ASIO`
 + `Boost`
 + `SDL2`
 + `SDL2_image`
++ `SDL2_net`
 + `SDL2_ttf`
 + `zlib`
-+ `libsndfile`
-+ `openal-soft`
 
 These libraries are recommended for full features and third-party scenario compatibility:
 
++ `alsa` _for net mic_
 + `curl` _for stats upload to lhowon.org_
++ `ffmpeg` _for music playback and film video export_
++ `libsndfile` _for some old third party scenarios with compressed audio_
 + `miniupnpc` _for opening router ports_
++ `speex` _for net mic_
 + `zziplib` _for using zipped plugins_
-+ `vpx` _for film export_
-+ `matroska` _for film export_
-+ `ebml` _for film export_
-+ `vorbis` _for film export_
-+ `libyuv` _for film export and video playback_
 
 #### Fedora
 
@@ -96,20 +91,25 @@ First, enable the [RPM Fusion Repository](http://rpmfusion.org/Configuration).
 
 Then, install the following packages.
 
-    sudo dnf install boost-devel curl-devel gcc-c++ \
-      libpng-devel SDL2-devel SDL2_ttf-devel SDL2_image-devel asio-devel \
-      zziplib-devel miniupnpc-devel openal-soft-devel libsndfile-devel
+    sudo dnf install boost-devel curl-devel ffmpeg-devel gcc-c++ \
+      libpng-devel SDL2-devel SDL2_ttf-devel SDL2_image-devel SDL2_net-devel \
+      speex-devel speexdsp-devel zziplib-devel miniupnpc-devel
+
+As an alternative to using FFmpeg (which requires the RPM Fusion Repository), you can install alternative libraries:
+
+    sudo dnf install libsndfile-devel libvorbis-devel
+
+If you don't compile with FFmpeg support, you won't be able to use WebM export in Aleph One.
 
 #### Ubuntu
 
 Run this command to install the necessary prerequisites for building Aleph One:
 
     sudo apt install build-essential libboost-all-dev libsdl2-dev \
-      libsdl2-image-dev libasio-dev libsdl2-ttf-dev libzzip-dev \
-      libpng-dev libcurl4-gnutls-dev libminiupnpc-dev libopenal-dev \
-      libsndfile1-dev libglu1-dev libvpx-dev libmatroska-dev libebml-dev \
-      libvorbis-dev libvorbisenc2 libyuv-dev
-
+      libsdl2-image-dev libsdl2-net-dev libsdl2-ttf-dev libspeexdsp-dev \
+      libzzip-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+      libpng-dev libcurl4-gnutls-dev libminiupnpc-dev
+	  
 ### Compile
 
 First, run the configure script:

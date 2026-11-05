@@ -102,6 +102,7 @@ void allocate_pathfinding_memory(
 	// Made reentrant because this is called every time MAXIMUM_PATHS is changed
 	if (paths) delete []paths;
 	paths= new path_definition[MAXIMUM_PATHS];
+	assert(paths);
 
 #ifdef VERIFY_PATH_SYNC
 	if (path_validation_area) delete []path_validation_area;
@@ -127,7 +128,7 @@ void reset_paths(
 short new_path(
 	world_point2d *source_point,
 	short source_polygon_index,
-	const world_point2d *destination_point,
+	world_point2d *destination_point,
 	short destination_polygon_index,
 	world_distance minimum_separation,
 	cost_proc_ptr cost,
@@ -198,16 +199,8 @@ short new_path(
 			{
 				polygon_index= flood_map(NONE, INT32_MAX, cost, _breadth_first, data);
 			}
-
-			if (destination_point)
-			{
-				world_vector2d bias{destination_point->x, destination_point->y};
-				choose_random_flood_node(&bias); /* choose a random destination */
-			}
-			else
-			{
-				choose_random_flood_node(nullptr);
-			}
+			
+			choose_random_flood_node((world_vector2d *)destination_point); /* choose a random destination */
 			reached_destination= false; /* we didn’t even have one */
 		}
 

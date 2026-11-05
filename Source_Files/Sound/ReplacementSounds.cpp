@@ -42,8 +42,9 @@ std::shared_ptr<SoundData> ExternalSoundHeader::LoadExternal(FileSpecifier& File
 		return p;
 	}
 	
-	audio_format = decoder->GetAudioFormat();
+	sixteen_bit = decoder->IsSixteenBit();
 	stereo = decoder->IsStereo();
+	signed_8bit = decoder->IsSigned();
 	bytes_per_frame = decoder->BytesPerFrame();
 	little_endian = decoder->IsLittleEndian();
 	loop_start = loop_end = 0;
@@ -78,10 +79,4 @@ void SoundReplacements::Reset()
 		SoundManager::instance()->UnloadSound(kvp.first.first);
 	}
 	m_hash.clear();
-}
-
-void SoundReplacements::Remove(short Index, short Slot)
-{
-	SoundManager::instance()->UnloadSound(Index);
-	m_hash.erase(key(Index, Slot));
 }

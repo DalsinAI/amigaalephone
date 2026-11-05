@@ -25,6 +25,7 @@ LUA_HUD_OBJECTS.H
 
 #include "cseries.h"
 
+#ifdef HAVE_LUA
 extern "C"
 {
 #include "lua.h"
@@ -90,5 +91,7 @@ typedef L_EnumContainer<Lua_TextureTypes_Name, Lua_TextureType> Lua_TextureTypes
 #define NUMBER_OF_LUA_TEXTURE_TYPES 5
 
 int Lua_HUDObjects_register(lua_State *L);
+
+#endif
 
 #endif

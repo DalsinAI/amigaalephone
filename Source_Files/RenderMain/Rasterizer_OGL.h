@@ -28,7 +28,6 @@
 
 #include "Rasterizer.h"
 
-#ifdef HAVE_OPENGL
 
 class Rasterizer_OGL_Class: public RasterizerClass
 {
@@ -66,5 +65,5 @@ public:
 	}
 };
 
-#endif
+
 #endif

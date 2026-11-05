@@ -26,12 +26,14 @@
 #define METASERVER_DIALOGS_H
 
 #include "network_metaserver.h"
+#include "metaserver_messages.h"
 #include "shared_widgets.h"
 
-std::optional<IPaddress> run_network_metaserver_ui();
+
+const IPaddress run_network_metaserver_ui();
 
 // This doesn't go here
-void setupAndConnectClient(MetaserverClient& client, bool use_remote_hub);
+void setupAndConnectClient(MetaserverClient& client);
 
 
 
@@ -40,7 +42,7 @@ struct game_info;
 class GameAvailableMetaserverAnnouncer
 {
 public:
-	GameAvailableMetaserverAnnouncer(const game_info& info, uint16 remote_hub_id = 0);
+	GameAvailableMetaserverAnnouncer(const game_info& info);
 	void Start(int32 time_limit);
 
 private:
@@ -68,7 +70,7 @@ public:
 	// Abstract factory; concrete type determined at link-time
 	static std::unique_ptr<MetaserverClientUi> Create();
 
-	std::optional<IPaddress> GetJoinAddressByRunning();
+	const IPaddress GetJoinAddressByRunning();
 
 	virtual ~MetaserverClientUi () {};
 
@@ -79,7 +81,6 @@ protected:
 
 	virtual int Run() = 0;
 	virtual void Stop() = 0;
-	virtual void Cancel() = 0;
 
 	void GameSelected(GameListMessage::GameListEntry game);
 	void JoinGame(const GameListMessage::GameListEntry&);
@@ -107,7 +108,7 @@ protected:
 	ButtonWidget*                                   m_joinWidget;
 	ButtonWidget*                                   m_gameInfoWidget;
 
-	uint64_t m_lastGameSelected;
+	Uint32 m_lastGameSelected;
 	bool m_stay_selected; // doesn't deselect after PM
 };
 

@@ -31,8 +31,6 @@
  *	also trying to fix fullscreen drawing problems related to flipping
  */
 
-#include <stack>
-
 #include "cseries.h"
 #include "sdl_dialogs.h"
 #include "sdl_fonts.h"
@@ -59,13 +57,9 @@
 #include "OGL_Render.h"
 #endif
 
-#ifdef HAVE_NFD
-#include "nfd.h"
-#endif
-
 #include "InfoTree.h"
 #include "Logging.h"
-#include "joystick.h"
+
 #include <map>
 #include <string>
 
@@ -115,10 +109,6 @@ static void set_theme_defaults(void);
 
 void initialize_dialogs()
 {
-#ifdef HAVE_NFD
-	NFD_Init();
-#endif
-
 	// Allocate surface for dialogs (this surface is needed because when
 	// OpenGL is active, we can't write directly to the screen)
 	dialog_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 480, 16, 0x7c00, 0x03e0, 0x001f, 0);
@@ -143,10 +133,6 @@ void initialize_dialogs()
 void shutdown_dialogs(void)
 {
 	unload_theme();
-
-#ifdef HAVE_NFD
-	NFD_Quit();
-#endif
 }
 
 
@@ -603,13 +589,13 @@ static bool parse_theme_file(FileSpecifier& theme_mml)
 			parse_metaserver(child);
 		
 		success = true;
-	} catch (const InfoTree::parse_error& e) {
+	} catch (InfoTree::parse_error e) {
 		logError("error parsing %s: %s", theme_mml.GetPath(), e.what());
-	} catch (const InfoTree::path_error& e) {
+	} catch (InfoTree::path_error e) {
 		logError("error parsing %s: %s", theme_mml.GetPath(), e.what());
-	} catch (const InfoTree::data_error& e) {
+	} catch (InfoTree::data_error e) {
 		logError("error parsing %s: %s", theme_mml.GetPath(), e.what());
-	} catch (const InfoTree::unexpected_error& e) {
+	} catch (InfoTree::unexpected_error e) {
 		logError("error parsing %s: %s", theme_mml.GetPath(), e.what());
 	}
 	return success;
@@ -1073,8 +1059,7 @@ int number_of_dialog_sounds() { return NUMBER_OF_DIALOG_SOUNDS; }
 
 void play_dialog_sound(int which)
 {
-	if (!(sound_preferences->flags & _mute_dialogs) &&
-		dialog_sound_definitions[which] != NONE)
+	if (dialog_sound_definitions[which] != NONE)
 	{
 		SoundManager::instance()->PlaySound(dialog_sound_definitions[which], 0, NONE);
 	}
@@ -2075,14 +2060,6 @@ void dialog::event(SDL_Event &e)
   bool handled = false;
   // handle events we do not want widgets to see or modify
   switch (e.type) {
-  case SDL_JOYDEVICEADDED:
-	  joystick_added(e.jdevice.which);
-	  break;
-
-  case SDL_JOYDEVICEREMOVED:
-	  joystick_removed(e.jdevice.which);
-	  break;
-
   case SDL_KEYDOWN:
     
     if (e.key.keysym.sym == SDLK_RETURN
@@ -2238,11 +2215,17 @@ int dialog::run(bool intro_exit_sounds)
 
 	// Run dialog loop
 	while (!done) {
-		if (poll())
-		{
+		// Process events
+		process_events();
+		if (done)
 			break;
-		}
 
+		if (machine_tick_count() > last_redraw + TICKS_PER_SECOND / 30)
+		{
+			draw_dirty_widgets();
+			last_redraw = machine_tick_count();
+		}
+        
 		// Run custom processing function
 		if (processing_function)
 			processing_function(this);
@@ -2313,21 +2296,6 @@ void dialog::start(bool play_sound)
 	done = false;
 }
 
-bool dialog::poll()
-{
-	process_events();
-	if (!done)
-	{
-		if (machine_tick_count() > last_redraw + TICKS_PER_SECOND / 30)
-		{
-			draw_dirty_widgets();
-			SDL_Rect r{0, 0, rect.w, rect.h};
-			update(r);
-			last_redraw = machine_tick_count();
-		}
-	}
-	return done;
-}
 
 /*
  *  Process pending dialog events
@@ -2459,42 +2427,3 @@ void dialog_disable_ok_if_empty(w_text_entry* inTextEntry) {
     modify_control_enabled(inTextEntry->get_owning_dialog(), iOK,
         (inTextEntry->get_text()[0] == 0) ? CONTROL_INACTIVE : CONTROL_ACTIVE);
 }
-
-static std::stack<std::unique_ptr<dialog>> ingame_dialogs;
-static bool ingame_dialog_started = false;
-
-void ingame_dialog_push(std::unique_ptr<dialog> d)
-{
-	set_keyboard_controller_status(false);
-	ingame_dialogs.push(std::move(d));
-	ingame_dialog_started = false; // don't push more than once per main event loop!
-}
-
-void ingame_dialog_poll()
-{
-	if (!ingame_dialogs.empty())
-	{
-		if (!ingame_dialog_started)
-		{
-			ingame_dialogs.top()->start(false);
-			ingame_dialog_started = true;
-		}
-
-		if (ingame_dialogs.top()->poll())
-		{
-			ingame_dialogs.top()->finish(false);
-			ingame_dialogs.pop();
-		}
-	}
-
-	if (ingame_dialogs.empty() && get_game_state() == _game_in_progress)
-	{
-		set_keyboard_controller_status(true);
-	}
-}
-
-bool ingame_dialog_active()
-{
-	return !ingame_dialogs.empty();
-}
-

@@ -26,7 +26,6 @@ May 18, 2009 (Eric Peterson):
 #ifndef JOYSTICK_H
 #define JOYSTICK_H
 
-#include "cseries.h"
 #include "cstypes.h"
 
 // this is where we start stuffing button presses into the big keymap array,
@@ -42,10 +41,10 @@ void initialize_joystick(void);
 void enter_joystick(void);
 void exit_joystick(void);
 void joystick_buttons_become_keypresses(Uint8* ioKeyMap);
-int process_joystick_axes(int flags);
+int process_joystick_axes(int flags, int tick);
 void joystick_axis_moved(int instance_id, int axis, int value);
 void joystick_button_pressed(int instance_id, int button, bool down);
 void joystick_added(int device_index);
-bool joystick_removed(int instance_id);
+void joystick_removed(int instance_id);
 
 #endif // JOYSTICK_H

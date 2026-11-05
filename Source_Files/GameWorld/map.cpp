@@ -346,6 +346,7 @@ void allocate_map_memory(
 	
 	static_world= new static_data;
 	dynamic_world= new dynamic_data;
+	assert(static_world&&dynamic_world);
 	obj_clear(*static_world);
 	obj_clear(*dynamic_world);
 
@@ -416,7 +417,7 @@ void initialize_map_for_new_level(
 	// Clear all these out -- supposed to be none of the contents of these when starting a level.
 	objlist_clear(automap_lines, AutomapLineList.size());
 	objlist_clear(automap_polygons, AutomapPolygonList.size());
-	objlist_clear(EffectList.data(), EffectList.size());
+	objlist_clear(effects, EffectList.size());
 	objlist_clear(projectiles,  ProjectileList.size());
 	objlist_clear(monsters,  MonsterList.size());
 	objlist_clear(objects,  ObjectList.size());
@@ -662,7 +663,7 @@ bool valid_point2d(
 bool valid_point3d(
 	world_point3d *p)
 {
-	short polygon_index= world_point_to_polygon_index(p);
+	short polygon_index= world_point_to_polygon_index((world_point2d *)p);
 	bool valid= false;
 	
 	if (polygon_index!=NONE)
@@ -823,6 +824,7 @@ void remove_map_object(
 		MARK_SLOT_AS_FREE(parasite);
 	}
 
+	SoundManager::instance()->OrphanSound(object_index);
 	L_Invalidate_Object(object_index);
 	*next_object= object->next_object;
 	MARK_SLOT_AS_FREE(object);
@@ -965,14 +967,11 @@ bool translate_map_object(
 		new_polygon_index= old_polygon_index;
 		do
 		{
-			line_index= find_line_crossed_leaving_polygon(new_polygon_index, &object->location, new_location);
+			line_index= find_line_crossed_leaving_polygon(new_polygon_index, (world_point2d *)&object->location, (world_point2d *)new_location);
 			if (line_index!=NONE) new_polygon_index= find_adjacent_polygon(new_polygon_index, line_index);
 			if (new_polygon_index==NONE)
 			{
-				auto center = get_polygon_data(old_polygon_index)->center;
-				new_location->x = center.x;
-				new_location->y = center.y;
-
+				*(world_point2d *)new_location= get_polygon_data(old_polygon_index)->center;
 				new_polygon_index= old_polygon_index;
 				changed_polygons= true; /* tell the caller we switched polygons, even though we didn’t */
 				break;
@@ -1613,7 +1612,7 @@ _fixed find_line_intersection(
 		left there) */
 	numerator= line_dx*(e0->y-p0->y) + line_dy*(p0->x-e0->x);
 	denominator= line_dx*dy - line_dy*dx;
-	while (numerator>=(1<<24)||numerator<=-(1<<24)) numerator>>= 1, denominator>>= 1;
+	while (numerator>=(1<<24)||numerator<=((-1)<<24)) numerator>>= 1, denominator>>= 1;
 	assert(numerator<(1<<24));
 	numerator<<= 8;
 	if (!(denominator>>= 8)) denominator= 1;
@@ -1646,7 +1645,7 @@ _fixed closest_point_on_line(
 	/* same comment as above for calculating t; this is not wholly accurate */
 	numerator= line_dx*dx + line_dy*dy;
 	denominator= line_dx*line_dx + line_dy*line_dy;
-	while (numerator>=(1<<23)||numerator<=-(1<<23)) numerator>>= 1, denominator>>= 1;
+	while (numerator>=(1<<23)||numerator<=(-1<<23)) numerator>>= 1, denominator>>= 1;
 	numerator<<= 8;
 	if (!(denominator>>= 8)) denominator= 1;
 	t= numerator/denominator;
@@ -1831,7 +1830,7 @@ bool keep_line_segment_out_of_walls(
 							case _first_line_pass:
 								/* first pass: set the flag and do the clip */
 								line_collision_bitmap|= 1<<i;
-								closest_point_on_line(&zone->e0, &zone->e1, p1, p1);
+								closest_point_on_line(&zone->e0, &zone->e1, (world_point2d*)p1, (world_point2d*)p1);
 								clipped= true;
 								break;
 							
@@ -1839,7 +1838,7 @@ bool keep_line_segment_out_of_walls(
 								if (line_collision_bitmap&(1<<i))
 								{
 									/* we hit this line before, change states (we can only hit one thing we hit before) */
-									closest_point_on_line(&zone->e0, &zone->e1, p1, p1);
+									closest_point_on_line(&zone->e0, &zone->e1, (world_point2d*)p1, (world_point2d*)p1);
 									state= _second_line_pass_made_contact;
 								}
 								else
@@ -1912,7 +1911,7 @@ bool keep_line_segment_out_of_walls(
 					endpoint->lowest_adjacent_ceiling_height-p1->z<height ||
 					ENDPOINT_IS_SOLID(endpoint))
 				{
-					closest_point_on_circle(&endpoint->vertex, MINIMUM_SEPARATION_FROM_WALL, p1, p1);
+					closest_point_on_circle(&endpoint->vertex, MINIMUM_SEPARATION_FROM_WALL, (world_point2d*)p1, (world_point2d*)p1);
 					clipped= true;
 				}
 				else
@@ -2022,7 +2021,7 @@ int32 point_to_line_distance_squared(
 	/* numerator is absolute value of the cross product of AB and AP, denominator is the
 		magnitude of AB squared */
 	signed_numerator= apx*aby - apy*abx;
-	numerator= std::abs(signed_numerator);
+	numerator= ABS(signed_numerator);
 	denominator= abx*abx + aby*aby;
 
 	/* before squaring numerator we make sure that it is smaller than fifteen bits (and we
@@ -2075,7 +2074,7 @@ void recalculate_map_counts(
 		;
 	dynamic_world->projectile_count= static_cast<int16>(count);
 	
-	for (count=MAXIMUM_EFFECTS_PER_MAP,effect=EffectList.data()+MAXIMUM_EFFECTS_PER_MAP-1;
+	for (count=MAXIMUM_EFFECTS_PER_MAP,effect=effects+MAXIMUM_EFFECTS_PER_MAP-1;
 			count>0&&(!SLOT_IS_USED(effect));
 			--count,--effect)
 		;
@@ -2165,9 +2164,9 @@ bool point_is_player_visible(
 		struct monster_data *monster= get_monster_data(player->monster_index);
 		struct object_data *object= get_object_data(monster->object_index);
 
-		if (!line_is_obstructed(object->polygon, &object->location, polygon_index, p))
+		if (!line_is_obstructed(object->polygon, (world_point2d*)&object->location, polygon_index, p))
 		{
-			int32 this_distance= guess_distance2d(&object->location, p);
+			int32 this_distance= guess_distance2d((world_point2d*)&object->location, p);
 			
 			if (*distance>this_distance) *distance= this_distance;
 			visible= true;
@@ -2197,7 +2196,7 @@ bool point_is_monster_visible(
 		struct object_data *object= get_object_data(IntersectedObjects[i]);
 		int32 this_distance;
 		
-		this_distance = guess_distance2d(&object->location, p);
+		this_distance = guess_distance2d((world_point2d*)&object->location, p);
 		if (*distance>this_distance) *distance= this_distance;
 	}
 
@@ -2208,8 +2207,7 @@ bool line_is_obstructed(
 	short polygon_index1,
 	world_point2d *p1,
 	short polygon_index2,
-	world_point2d *p2,
-	bool for_sounds)
+	world_point2d *p2)
 {
 	short polygon_index= polygon_index1;
 	bool obstructed= false;
@@ -2220,23 +2218,20 @@ bool line_is_obstructed(
 		bool last_line = false;
 		if (film_profile.line_is_obstructed_fix)
 		{
-			line_index = find_line_crossed_leaving_polygon(polygon_index, p1, p2);
+			line_index = find_line_crossed_leaving_polygon(polygon_index, (world_point2d *)p1, (world_point2d *)p2);
 		}
 		else
 		{
-			line_index= _find_line_crossed_leaving_polygon(polygon_index, p1, p2, &last_line);
+			line_index= _find_line_crossed_leaving_polygon(polygon_index, (world_point2d *)p1, (world_point2d *)p2, &last_line);
 		}
 
 		if (line_index!=NONE)
 		{
 			if (last_line && polygon_index==polygon_index2) break;
-
-			const auto line_data = get_line_data(line_index);
-			if (!LINE_IS_SOLID(line_data) || (for_sounds && LINE_HAS_TRANSPARENT_SIDE(line_data)))
+			if (!LINE_IS_SOLID(get_line_data(line_index)))
 			{
 				/* transparent line, find adjacent polygon */
 				polygon_index= find_adjacent_polygon(polygon_index, line_index);
-				if (for_sounds && polygon_index == NONE) break;
 				assert(polygon_index!=NONE);
 			}
 			else
@@ -2284,8 +2279,8 @@ bool line_is_obstructed(
 	return obstructed;
 }
 
-#define MAXIMUM_GARBAGE_OBJECTS_PER_MAP (get_dynamic_limit(_dynamic_limit_garbage))
-#define MAXIMUM_GARBAGE_OBJECTS_PER_POLYGON (get_dynamic_limit(_dynamic_limit_garbage_per_polygon))
+#define MAXIMUM_GARBAGE_OBJECTS_PER_MAP 256
+#define MAXIMUM_GARBAGE_OBJECTS_PER_POLYGON 10
 
 void turn_object_to_shit( /* garbage that is, garbage */
 	short garbage_object_index)
@@ -2308,7 +2303,7 @@ void turn_object_to_shit( /* garbage that is, garbage */
 		}
 	}
 	
-	if (garbage_objects_in_polygon>MAXIMUM_GARBAGE_OBJECTS_PER_POLYGON)
+	if (garbage_objects_in_polygon> (graphics_preferences->double_corpse_limit ? MAXIMUM_GARBAGE_OBJECTS_PER_POLYGON * 2 : MAXIMUM_GARBAGE_OBJECTS_PER_POLYGON))
 	{
 		/* there are too many garbage objects in this polygon, remove the last (oldest?) one in
 			the linked list */
@@ -2319,7 +2314,7 @@ void turn_object_to_shit( /* garbage that is, garbage */
 		/* see if we have overflowed the maximum allowable garbage objects per map; if we have then
 			remove an existing piece of shit to make room for the new one (this sort of removal
 			could be really obvious... but who pays attention to dead bodies anyway?) */
-	  if (dynamic_world->garbage_object_count>=MAXIMUM_GARBAGE_OBJECTS_PER_MAP)
+	  if (dynamic_world->garbage_object_count>= (graphics_preferences->double_corpse_limit? MAXIMUM_GARBAGE_OBJECTS_PER_MAP * 2 : MAXIMUM_GARBAGE_OBJECTS_PER_MAP))
 	    {
 			/* find a garbage object to remove, and do so (we’re certain that many exist) */
 			for (object_index= garbage_object_index, object= garbage_object;
@@ -2349,10 +2344,11 @@ void random_point_on_circle(
 	world_distance adjusted_floor_height, adjusted_ceiling_height, supporting_polygon_index; /* not used */
 	
 	*random_point= *center;
-	translate_point2d(random_point, radius, global_random()&(NUMBER_OF_ANGLES-1));
+	translate_point2d((world_point2d *)random_point, radius, global_random()&(NUMBER_OF_ANGLES-1));
 	keep_line_segment_out_of_walls(center_polygon_index, center, random_point, 0, WORLD_ONE/12,
 		&adjusted_floor_height, &adjusted_ceiling_height, &supporting_polygon_index);
-	*random_polygon_index= find_new_object_polygon(center, random_point, center_polygon_index);
+	*random_polygon_index= find_new_object_polygon((world_point2d *)center,
+		(world_point2d *)random_point, center_polygon_index);
 	if (*random_polygon_index!=NONE)
 	{
 		struct polygon_data *center_polygon= get_polygon_data(center_polygon_index);
@@ -2474,32 +2470,16 @@ bool line_has_variable_height(
 
 /* ---------- sound code */
 
-world_location3d* get_object_sound_location(short object_index) {
-
-	struct object_data* object = get_object_data(object_index);
-
-	switch (GET_OBJECT_OWNER(object)) {
-	case _object_is_monster:
-		return (world_location3d*)&get_monster_data(object->permutation)->sound_location;
-	case _object_is_effect:
-	{
-		auto object_owner_index = get_effect_data(object->permutation)->data;
-		auto object_owner = GetMemberWithBounds(objects, object_owner_index, MAXIMUM_OBJECTS_PER_MAP);
-		if (object_owner_index != NONE && object_owner && SLOT_IS_USED(object_owner)) return get_object_sound_location(object_owner_index);
-	}
-	[[fallthrough]];
-	default:
-		return (world_location3d*)&object->location;
-	}
-}
-
 void play_object_sound(
 	short object_index,
-	short sound_code,
-	bool local_sound)
+	short sound_code)
 {
 	struct object_data *object= get_object_data(object_index);
-	SoundManager::instance()->PlaySound(sound_code, local_sound ? 0 : get_object_sound_location(object_index), local_sound ? NONE : object_index, object->sound_pitch);
+	world_location3d *location= GET_OBJECT_OWNER(object)==_object_is_monster ?
+		(world_location3d *) &get_monster_data(object->permutation)->sound_location : 
+		(world_location3d *) &object->location;
+
+	SoundManager::instance()->PlaySound(sound_code, location, object_index, object->sound_pitch);
 }
 
 void play_polygon_sound(
@@ -2509,18 +2489,17 @@ void play_polygon_sound(
 	struct polygon_data *polygon= get_polygon_data(polygon_index);
 	world_location3d source;
 	
-	find_center_of_polygon(polygon_index, &source.point);
+	find_center_of_polygon(polygon_index, (world_point2d *)&source.point);
 	source.point.z= polygon->floor_height;
 	source.polygon_index= polygon_index;
 	
 	SoundManager::instance()->PlaySound(sound_code, &source, NONE);
 }
 
-void play_side_sound(
+void _play_side_sound(
 	short side_index,
 	short sound_code,
-	_fixed pitch,
-	bool soft_rewind)
+	_fixed pitch)
 {
 	struct side_data *side= get_side_data(side_index);
 	world_location3d source;
@@ -2528,7 +2507,7 @@ void play_side_sound(
 	calculate_line_midpoint(side->line_index, &source.point);
 	source.polygon_index= side->polygon_index;
 
-	SoundManager::instance()->PlaySound(sound_code, &source, NONE, pitch, soft_rewind);
+	SoundManager::instance()->PlaySound(sound_code, &source, NONE, pitch);
 }
 
 void play_world_sound(
@@ -2554,24 +2533,19 @@ world_location3d *_sound_listener_proc(
 
 // stuff floating on top of media is above it
 uint16 _sound_obstructed_proc(
-	world_location3d *source,
-	bool distinguish_obstruction_types)
+	world_location3d *source)
 {
 	world_location3d *listener= _sound_listener_proc();
 	uint16 flags= 0;
-	constexpr int under_media_source_threshold = WORLD_ONE_FOURTH; //we don't obstruct sources not that deep in media
 	
 	if (listener)
 	{
-		if (line_is_obstructed(source->polygon_index, &source->point,
-			listener->polygon_index, &listener->point, true))
+		if (line_is_obstructed(source->polygon_index, (world_point2d *)&source->point,
+			listener->polygon_index, (world_point2d *)&listener->point))
 		{
 			flags|= _sound_was_obstructed;
 		}
-
-		bool check_media_obstruction = distinguish_obstruction_types || !(flags & _sound_was_obstructed);
-
-		if (check_media_obstruction)
+		else
 		{
 			struct polygon_data *source_polygon= get_polygon_data(source->polygon_index);
 			struct polygon_data *listener_polygon= get_polygon_data(listener->polygon_index);
@@ -2583,7 +2557,7 @@ uint16 _sound_obstructed_proc(
 				media_data *media = get_media_data(source_polygon->media_index);
 				if (media)
 				{
-					if (source->point.z + under_media_source_threshold < media->height)
+					if (source->point.z<media->height)
 					{
 						source_under_media= true;
 					}

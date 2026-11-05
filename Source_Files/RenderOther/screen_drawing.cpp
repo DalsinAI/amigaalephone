@@ -586,18 +586,6 @@ int ttf_font_info::_draw_text(SDL_Surface *s, const char *text, size_t length, i
 	else
 		SDL_BlitSurface(text_surface, NULL, s, &dst_rect);
 
-	if (style & styleUnderline)
-	{
-		SDL_Rect r = {x, y + 1, text_surface->w, 1};
-		if (draw_clip_rect_active)
-		{
-			r.x = MAX(x, clip_left);
-			r.w = MAX(0, MIN(x + text_surface->w, clip_right) - r.x);
-			r.y = MAX(y + 1, clip_top);
-			r.h = MAX(0, MIN(y + 2, clip_bottom) - r.y);
-		}
-		SDL_FillRect(s, &r, pixel);
-	}
 	if (s == MainScreenSurface())
 		MainScreenUpdateRect(x, y - TTF_FontAscent(get_ttf(style)), text_width(text, style, utf8), TTF_FontHeight(get_ttf(style)));
 
@@ -635,15 +623,14 @@ void _draw_screen_text(const char *text, screen_rectangle *destination, short fl
 	if (flags & _wrap_text) {
 		int last_non_printing_character = 0, text_width = 0;
 		unsigned count = 0;
-		auto len = strlen(text_to_draw);
-		while (count < len && text_width < RECTANGLE_WIDTH(destination)) {
+		while (count < strlen(text_to_draw) && text_width < RECTANGLE_WIDTH(destination)) {
 			text_width += char_width(text_to_draw[count], font, style);
 			if (text_to_draw[count] == ' ')
 				last_non_printing_character = count;
 			count++;
 		}
 		
-		if( count != len) {
+		if( count != strlen(text_to_draw)) {
 			char remaining_text_to_draw[256];
 			screen_rectangle new_destination;
 			
@@ -1206,7 +1193,7 @@ void draw_polygon(SDL_Surface *s, const world_point2d *vertex_array, int vertex_
 
 void _get_interface_color(size_t color_index, SDL_Color *color)
 {	
-	assert(color_index<NumInterfaceColors);
+	assert(color_index>=0 && color_index<NumInterfaceColors);
 	
 	rgb_color &c = InterfaceColors[color_index];
 	color->r = c.red >> 8;
@@ -1219,7 +1206,7 @@ void _get_interface_color(size_t color_index, SDL_Color *color)
 
 void _get_player_color(size_t color_index, RGBColor *color)
 {
-	assert(color_index<NUMBER_OF_PLAYER_COLORS);
+	assert(color_index>=0 && color_index<NUMBER_OF_PLAYER_COLORS);
 
 	rgb_color &c = InterfaceColors[color_index + PLAYER_COLOR_BASE_INDEX];
 	color->red = c.red;
@@ -1229,7 +1216,7 @@ void _get_player_color(size_t color_index, RGBColor *color)
 
 void _get_player_color(size_t color_index, SDL_Color *color)
 {
-    assert(color_index<NUMBER_OF_PLAYER_COLORS);
+    assert(color_index>=0 && color_index<NUMBER_OF_PLAYER_COLORS);
 
     rgb_color &c = InterfaceColors[color_index + PLAYER_COLOR_BASE_INDEX];
     color->r = static_cast<Uint8>(c.red);

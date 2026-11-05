@@ -369,16 +369,16 @@ bool LoadModel_Dim3(FileSpecifier& Spec, Model3D& Model, int WhichPass)
 		{
 			parse_dim3(root, Model);
 		}
-	} catch (const InfoTree::parse_error& ex) {
+	} catch (InfoTree::parse_error ex) {
 		logError("Error parsing Dim3 file (%s): %s", Spec.GetPath(), ex.what());
 		parse_error = true;
-	} catch (const InfoTree::path_error& ep) {
+	} catch (InfoTree::path_error ep) {
 		logError("Path error parsing Dim3 file (%s): %s", Spec.GetPath(), ep.what());
 		parse_error = true;
-	} catch (const InfoTree::data_error& ed) {
+	} catch (InfoTree::data_error ed) {
 		logError("Data error parsing Dim3 file (%s): %s", Spec.GetPath(), ed.what());
 		parse_error = true;
-	} catch (const InfoTree::unexpected_error& ee) {
+	} catch (InfoTree::unexpected_error ee) {
 		logError("Unexpected error parsing Dim3 file (%s): %s", Spec.GetPath(), ee.what());
 		parse_error = true;
 	}

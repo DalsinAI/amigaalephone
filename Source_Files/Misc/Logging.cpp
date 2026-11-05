@@ -27,8 +27,7 @@
 #include "Logging.h"
 #include "cseries.h"
 #include "shell.h"
-#include <thread>
-#include <mutex>
+
 #include <fstream>
 #include <string>
 #include <vector>
@@ -102,29 +101,17 @@ Logger::~Logger() {
 
 class TopLevelLogger : public Logger {
 public:
+    TopLevelLogger() : mMostRecentCommonStackDepth(0), mMostRecentlyPrintedStackDepth(0) {}
     virtual void pushLogContextV(const char* inFile, int inLine, const char* inContext, va_list inArgs);
     virtual void popLogContext();
     virtual void logMessageV(const char* inDomain, int inLevel, const char* inFile, int inLine, const char* inMessage, va_list inArgs);
 	void flush();
 protected:
-
-    struct LogData
-    {
-        vector<string>	mContextStack;
-        size_t	mMostRecentCommonStackDepth = 0;
-        size_t	mMostRecentlyPrintedStackDepth = 0;
-    };
-
-    LogData& getLogData()
-    {
-        static std::mutex mutex;
-        std::lock_guard lock(mutex);
-        return _log_data[std::this_thread::get_id()];
-    }
-
-private:
-    std::unordered_map<std::thread::id, LogData> _log_data;
+    vector<string>	mContextStack;
+    size_t	mMostRecentCommonStackDepth;
+    size_t	mMostRecentlyPrintedStackDepth;
 };
+
 
 void
 TopLevelLogger::pushLogContextV(const char* inFile, int inLine, const char* inContext, va_list inArgs) {
@@ -138,16 +125,15 @@ TopLevelLogger::pushLogContextV(const char* inFile, int inLine, const char* inCo
                 snprintf(stringBuffer, kStringBufferSize, " (%s:%d)", inFile, inLine);
                 theContextString += stringBuffer;
         }
-        getLogData().mContextStack.push_back(theContextString);
+        mContextStack.push_back(theContextString);
 }
 
 
 void
 TopLevelLogger::popLogContext() {
-    auto& log_data = getLogData();
-    log_data.mContextStack.pop_back();
-    if(log_data.mContextStack.size() < log_data.mMostRecentCommonStackDepth)
-        log_data.mMostRecentCommonStackDepth = log_data.mContextStack.size();
+    mContextStack.pop_back();
+    if(mContextStack.size() < mMostRecentCommonStackDepth)
+        mMostRecentCommonStackDepth = mContextStack.size();
 }
 
 
@@ -165,9 +151,7 @@ TopLevelLogger::logMessageV(const char* inDomain, int inLevel, const char* inFil
     // Also eventually some logged messages could be posted in a dialog in addition to appended to the file.
     if(sOutputFile != NULL && inLevel < sLoggingThreshhold) {
         char	stringBuffer[kStringBufferSize];
-        auto& log_data = getLogData();
-
-        size_t firstDepthToPrint = log_data.mMostRecentCommonStackDepth;
+        size_t firstDepthToPrint = mMostRecentCommonStackDepth;
     /*
         // This was designed to give a little context when coming back from deep stacks, but it seems
         // rather annoying to me in practice.  (Maybe should be set to only kick in for bigger stack depth differences,
@@ -175,11 +159,11 @@ TopLevelLogger::logMessageV(const char* inDomain, int inLevel, const char* inFil
         if(mMostRecentlyPrintedStackDepth != mMostRecentCommonStackDepth && firstDepthToPrint > 0)
             firstDepthToPrint--;
     */
-        for(size_t depth = firstDepthToPrint; depth < log_data.mContextStack.size(); depth++) {
+        for(size_t depth = firstDepthToPrint; depth < mContextStack.size(); depth++) {
             string	theString(depth * 2, ' ');
     
             theString += "while ";
-            theString += log_data.mContextStack[depth];
+            theString += mContextStack[depth];
             
             fprintf(sOutputFile, "%s\n", theString.c_str());
 			fprintf(stderr, "%s\n", theString.c_str());
@@ -187,7 +171,7 @@ TopLevelLogger::logMessageV(const char* inDomain, int inLevel, const char* inFil
         
         vsnprintf(stringBuffer, kStringBufferSize, inMessage, inArgs);
     
-        string	theString(log_data.mContextStack.size() * 2, ' ');
+        string	theString(mContextStack.size() * 2, ' ');
         
         theString += stringBuffer;
         
@@ -204,8 +188,8 @@ TopLevelLogger::logMessageV(const char* inDomain, int inLevel, const char* inFil
         if(sFlushOutput)
                 fflush(sOutputFile);
         
-        log_data.mMostRecentCommonStackDepth = log_data.mContextStack.size();
-        log_data.mMostRecentlyPrintedStackDepth = log_data.mContextStack.size();
+        mMostRecentCommonStackDepth = mContextStack.size();
+        mMostRecentlyPrintedStackDepth = mContextStack.size();
     }
 }
 

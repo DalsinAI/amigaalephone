@@ -239,8 +239,9 @@ class FileSpecifier
 public:
 	// The typecodes here are the symbolic constants defined in tags.h (_typecode_creator, etc.)
 	
-	// Get the name (final path element)
-	std::string GetName() const;
+	// Get the name (final path element) as a C string:
+	// assumes enough space to hold it if getting (max. 256 bytes)
+	void GetName(char *Name) const;
 	
 	//   Looks in all directories in the current data search
 	//   path for a file with the relative path "NameWithPath" and
@@ -272,7 +273,6 @@ public:
 	
 	// These calls are for creating dialog boxes to set the filespec
 	// A null pointer means an empty string
-	bool ReadDirectoryDialog();
 	bool ReadDialog(Typecode Type, const char *Prompt=NULL);
 	bool WriteDialog(Typecode Type, const char *Prompt=NULL, const char *DefaultName=NULL);
 	
@@ -290,6 +290,9 @@ public:
 	// Returns _typecode_unknown if the type could not be identified;
 	// the types returned are the _typecode_stuff in tags.h
 	Typecode GetType();
+
+	// How many bytes are free in the disk that the file lives in?
+	bool GetFreeSpace(uint32& FreeSpace);
 	
 	// Copy file contents
 	bool CopyContents(FileSpecifier& File);
@@ -334,7 +337,7 @@ public:
 	void SplitPath(string &base, string &part) const;
 	void SplitPath(DirectorySpecifier &base, string &part) const {string b; SplitPath(b, part); base = b;}
 
-	bool MakeDirectory();
+	bool CreateDirectory();
 	
 	// Return directory contents (following symlinks), excluding dot-prefixed files
 	bool ReadDirectory(vector<dir_entry> &vec);
@@ -360,12 +363,6 @@ class ScopedSearchPath
 public:
 	ScopedSearchPath(const DirectorySpecifier& dir);
 	~ScopedSearchPath();
-
-private:
-	ScopedSearchPath(const ScopedSearchPath&) = delete;
-	ScopedSearchPath& operator=(const ScopedSearchPath&) = delete;
-
-	const DirectorySpecifier d;
 };
 
 #endif

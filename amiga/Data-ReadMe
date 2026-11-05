@@ -1,0 +1,34 @@
+Marathon data for Aleph One
+===========================
+
+Aleph One is the engine only: it comes with no game. Bungie released the
+data of Marathon, Marathon 2: Durandal and Marathon Infinity for free
+distribution, and the Aleph One project hosts it at
+
+    https://alephone.lhowon.org/
+
+Take the "data" archive of each scenario (Marathon-20230529-Data.zip,
+Marathon2-20230529-Data.zip, MarathonInfinity-20230529-Data.zip, or the
+same release as this program), not an installer for another system. Each
+unpacks to a drawer holding Map, Shapes, Sounds, Images, Music (or a
+Music drawer) and Scripts/MML/Plugins drawers of its own.
+
+Then either
+
+  - copy the CONTENTS of one scenario's drawer into the Scenario drawer
+    here, and open AlephOne's icon; or
+
+  - keep the scenarios where you like, and name one when you start:
+
+        AlephOne Work:Games/Marathon2
+
+    or, from Workbench, set the DATA tool type of AlephOne's icon
+    (Icons, Information..., tool types) to DATA=Work:Games/Marathon2 (one
+    is there, in brackets: take the brackets off), or shift-click the
+    scenario's drawer and then AlephOne's icon.
+
+Preferences, saved games, films and screenshots go in a User drawer
+beside the program, made on the first run.
+
+The scenario data is not included here and must not be packaged with this
+port: it is Bungie's, distributed by the Aleph One project.

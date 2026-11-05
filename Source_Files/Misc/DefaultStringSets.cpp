@@ -166,10 +166,8 @@ static const char* sStringSetNumber132[] = {
 	
 	"Your game could not be advertised on the Internet.  Please distribute your public IP address by other means or try again later.",
 	
-	"$appName$ failed to configure the firewall/router. You may be unable to gather.",
-
-    "Impossible to establish a connection with an available remote server. "
-	"Please try again later, or try to increase your latency tolerance, or try to gather yourself."
+	"$appName$ failed to configure the firewall/router. You may be unable to gather."
+	
 };
 
 // STR# Resource: "Key Codes To Names"
@@ -414,13 +412,9 @@ static const char* sStringSetNumber143[] = {
     "Sending environment information to the other players.",
     "Receiving environment information from server.",
     "Loading...",
-    "Submitting item content to Steam...",
-    "Preparing upload to Steam...",
-    "Uploading content to Steam...",
     "Attempting to open router ports...",
     "Closing router ports...",
-    "Checking for updates...",
-    "Connecting to a remote hub server..."
+    "Checking for updates..."
 };
 
 

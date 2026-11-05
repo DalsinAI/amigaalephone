@@ -15,8 +15,6 @@
 #include "Rasterizer_OGL.h"
 #include <memory>
 
-#ifdef HAVE_OPENGL
-
 class FBOSwapper;
 class Rasterizer_Shader_Class : public Rasterizer_OGL_Class {
 	friend class RenderRasterize_Shader;
@@ -39,5 +37,4 @@ public:
 
 };
 
-#endif
 #endif

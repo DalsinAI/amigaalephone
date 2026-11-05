@@ -31,7 +31,6 @@
 #include "world.h"
 #include <string>
 #include <sstream>
-#include <type_traits>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -65,7 +64,7 @@ public:
 		try {
 			value = get_child(path).get_value<T>();
 			return true;
-		} catch (const path_error& ep) {} catch (const data_error& ed) {}
+		} catch (path_error ep) {} catch (data_error ed) {}
 		return false;
 	}
 
@@ -74,25 +73,12 @@ public:
 		return read(std::string("<xmlattr>.") + path, value);
 	}
 
-	template<typename T, typename std::enable_if_t<!std::is_enum<T>::value, bool>* = nullptr> bool read_attr_bounded(std::string path, T& value, const T min, const T max) const
+	template<typename T> bool read_attr_bounded(std::string path, T& value, const T min, const T max) const
 	{
 		T temp;
 		if (read_attr(path, temp) && temp >= min && temp <= max)
 		{
 			value = temp;
-			return true;
-		}
-		return false;
-	}
-
-	template<typename T, typename std::enable_if_t<std::is_enum<T>::value, bool>* = nullptr> bool read_attr_bounded(std::string path, T& value, const T min, const T max) const
-	{
-		std::underlying_type_t<T> temp;
-		if (read_attr(path, temp) &&
-			temp >= static_cast<std::underlying_type_t<T>>(min) &&
-			temp <= static_cast<std::underlying_type_t<T>>(max))
-		{
-			value = static_cast<T>(temp);
 			return true;
 		}
 		return false;

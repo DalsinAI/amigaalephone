@@ -244,57 +244,6 @@ LandscapeOptions *View_GetLandscapeOptions(shape_descriptor Desc)
 	return &DefaultLandscape;
 }
 
-const LandscapeOptions& View_GetLandscapeOptions(int16_t coll, int16_t frame)
-{
-	auto it = std::find_if(LOList[coll].begin(),
-						   LOList[coll].end(),
-						   [frame](auto entry) {
-							   return entry.Frame == frame ||
-								   entry.Frame == AnyFrame;
-						   });
-
-	if (it != LOList[coll].end())
-	{
-		return it->OptionsData;
-	} else {
-		return DefaultLandscape;
-	}
-}
-
-void View_SetLandscapeOptions(int16_t coll, int16_t frame,
-							  const LandscapeOptions& options)
-{
-	auto& v = LOList[coll];
-
-	auto it = std::find_if(v.begin(),
-						   v.end(),
-						   [frame](auto entry) {
-							   return entry.Frame == frame ||
-								   entry.Frame == AnyFrame;
-						   });
-
-	if (it != v.end())
-	{
-		it->OptionsData = options;
-	}
-	else
-	{
-		LandscapeOptionsEntry entry;
-		entry.Frame = frame;
-		entry.OptionsData = options;
-
-		if (v.size() > 0 && v[v.size() - 1].Frame == AnyFrame)
-		{
-			// keep AnyFrame at the end so it's found last for override purposes
-			--it;
-			v.insert(it, entry);
-		}
-		else
-		{
-			v.push_back(entry);
-		}
-	}
-}
 
 struct FOV_settings_definition *original_FOV_settings = NULL;
 struct view_settings_definition *original_view_settings = NULL;
@@ -389,23 +338,30 @@ void parse_mml_landscapes(const InfoTree& root)
 			child.read_attr("vert_exp", data.VertExp);
 			child.read_attr("vert_repeat", data.VertRepeat);
 			child.read_attr("ogl_asprat_exp", data.OGL_AspRatExp);
-			child.read_attr_bounded("azimuth", data.Azimuth, 0.0, 360.0);
-			child.read_attr_bounded("elevation", data.Elevation, 0.0, 360.0);
-
-			int16 projection;
-			if (child.read_attr("projection", projection))
+			child.read_angle("azimuth", data.Azimuth);
+			
+			// Check to see if a frame is already accounted for
+			bool found = false;
+			vector<LandscapeOptionsEntry>& LOL = LOList[coll];
+			for (vector<LandscapeOptionsEntry>::iterator LOIter = LOL.begin(); LOIter < LOL.end(); LOIter++)
 			{
-				if (projection == 1)
+				if (LOIter->Frame == frame)
 				{
-					data.SphereMap = true;
-				}
-				else
-				{
-					data.SphereMap = false;
+					// Replace the data
+					LOIter->OptionsData = data;
+					found = true;
+					break;
 				}
 			}
-
-			View_SetLandscapeOptions(coll, frame, data);
+			
+			// If not, then add a new frame entry
+			if (!found)
+			{
+				LandscapeOptionsEntry DataEntry;
+				DataEntry.Frame = frame;
+				DataEntry.OptionsData = data;
+				LOL.push_back(DataEntry);
+			}
 		}
 	}
 }

@@ -1,0 +1,74 @@
+/* A Workbench start of Aleph One: the arguments a Shell would give.
+ *
+ * From a Shell, "AlephOne Work:Marathon2" names the scenario drawer as on
+ * any other system. From Workbench there is no command line, so this makes
+ * one: the program's name, then a DATA tool type (DATA=Work:Marathon2) on
+ * the program's icon, then any icons given with it (a scenario's drawer, a
+ * film, a saved game or a plugin, by shift-clicking or as a project's
+ * default tool), each as its full AmigaDOS name. */
+#include <cstring>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+#include <exec/types.h>
+#include <workbench/startup.h>
+#include <workbench/workbench.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <proto/icon.h>
+
+#include "amiga_main.h"
+
+struct Library* IconBase;
+
+static std::string lock_name(BPTR lock, const char* name)
+{
+	char buf[512];
+	if (!lock || !NameFromLock(lock, (STRPTR)buf, sizeof(buf)))
+		return name ? name : "";
+	if (name && *name)
+		AddPart((STRPTR)buf, (CONST_STRPTR)name, sizeof(buf));
+	return buf;
+}
+
+void amiga_workbench_args(int* argc, char*** argv)
+{
+	if (*argc != 0)
+		return;
+	struct WBStartup* wb = (struct WBStartup*)*argv;
+	static std::vector<std::string> words;
+	static std::vector<char*> ptrs;
+	words.push_back("AlephOne");
+
+	if (wb && wb->sm_NumArgs > 0) {
+		struct WBArg* self = &wb->sm_ArgList[0];
+		IconBase = OpenLibrary((CONST_STRPTR)"icon.library", 36);
+		if (IconBase) {
+			BPTR old = CurrentDir(self->wa_Lock);
+			struct DiskObject* dob = GetDiskObject((STRPTR)self->wa_Name);
+			if (dob) {
+				const char* data = (const char*)FindToolType((CONST_STRPTR*)dob->do_ToolTypes, (CONST_STRPTR)"DATA");
+				if (data && *data)
+					words.push_back(data);
+				FreeDiskObject(dob);
+			}
+			CurrentDir(old);
+			CloseLibrary(IconBase);
+			IconBase = NULL;
+		}
+		if (self->wa_Name && *self->wa_Name)
+			words[0] = (const char*)self->wa_Name;
+		for (LONG i = 1; i < wb->sm_NumArgs; i++) {
+			struct WBArg* a = &wb->sm_ArgList[i];
+			/* a drawer comes as its lock with an empty name */
+			words.push_back(lock_name(a->wa_Lock, (const char*)a->wa_Name));
+		}
+	}
+
+	for (auto& w : words)
+		ptrs.push_back(&w[0]);
+	ptrs.push_back(NULL);
+	*argc = (int)words.size();
+	*argv = ptrs.data();
+}

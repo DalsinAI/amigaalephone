@@ -464,15 +464,6 @@ void guess_side_lightsource_indexes(
 	short side_index)
 {
 	struct side_data *side= get_side_data(side_index);
-	if (side->line_index < 0 ||
-		side->line_index >= dynamic_world->line_count ||
-		side->polygon_index < 0 ||
-		side->polygon_index >= dynamic_world->polygon_count)
-	{
-		// apparently some M1 net maps have orphan sides
-		return;
-	}
-	
 	struct line_data *line= get_line_data(side->line_index);
 	struct polygon_data *polygon= get_polygon_data(side->polygon_index);
     
@@ -611,7 +602,7 @@ static int32 calculate_polygon_area(
 	}
 	
 	/* real area is absolute value of calculated area divided by two */
-     area= (std::abs(area) >> 1);
+     area= (ABS(area) >> 1);
 	
 	return area;
 }
@@ -1168,8 +1159,8 @@ static void precalculate_polygon_sound_sources(
 					struct endpoint_data *endpoint= get_endpoint_data(polygon->endpoint_indexes[i]);
 					struct line_data *line= get_line_data(polygon->line_indexes[i]);
 					
-					if (guess_distance2d(&object->location, &endpoint->vertex)<ZERO_VOLUME_DISTANCE ||
-						point_to_line_segment_distance_squared(&object->location,
+					if (guess_distance2d((world_point2d *)&object->location, &endpoint->vertex)<ZERO_VOLUME_DISTANCE ||
+						point_to_line_segment_distance_squared((world_point2d *)&object->location,
 							&get_endpoint_data(line->endpoint_indexes[0])->vertex,
 							&get_endpoint_data(line->endpoint_indexes[1])->vertex)<ZERO_VOLUME_DISTANCE)
 					{

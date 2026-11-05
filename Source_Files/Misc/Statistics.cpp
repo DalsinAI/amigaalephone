@@ -25,6 +25,7 @@
 #include "sdl_widgets.h"
 #include "alephversion.h"
 #include "preferences.h"
+#include "sdl_network.h"
 
 #include <functional>
 #include <sstream>
@@ -43,7 +44,7 @@ private:
 	SDL_mutex* mutex_;
 };
 
-StatsManager::StatsManager() : thread_(0), run_(true), busy_(false)
+StatsManager::StatsManager() : thread_(0), run_(true)
 {
 	entry_mutex_ = SDL_CreateMutex();
 
@@ -124,7 +125,7 @@ int StatsManager::Run(void *pv)
 			}
 			else
 			{
-				entry = std::make_unique<Entry>(sm->entries_.front());
+				entry.reset(new Entry(sm->entries_.front()));
 				sm->entries_.pop();
 			}
 		}

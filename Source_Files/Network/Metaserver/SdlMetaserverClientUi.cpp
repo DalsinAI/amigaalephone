@@ -143,17 +143,17 @@ public:
 	int Run()
 	{
 		d.set_processing_function(std::bind(&SdlMetaserverClientUi::pump, this, std::placeholders::_1));
-		return d.run();
+		int result = d.run();
+
+		if(result == -1)
+			obj_clear(m_joinAddress);
+
+		return result;
 	}
 	
 	void Stop()
 	{
 		dialog_ok(&d);
-	}
-
-	void Cancel()
-	{
-		dialog_cancel(&d);
 	}
 
 	void InfoClicked()
@@ -336,25 +336,19 @@ public:
 private:
 
 	w_games_in_room* games_in_room_w;
-	uint64_t last_pump_update = 0;
 
 	void
 	pump(dialog* d)
 	{
-		auto ticks = machine_tick_count();
-		bool refresh = ticks > last_pump_update + 5000;
-
-		if (refresh)
+		static uint32 last_update = 0;
+		uint32 ticks = machine_tick_count();
+		if (ticks > last_update + 5000)
 		{
-			last_pump_update = ticks;
+			last_update = ticks;
 			games_in_room_w->refresh();
 		}
 		if (gMetaserverClient->isConnected())
-		{
 			MetaserverClient::pumpAll();
-			auto updates = gMetaserverClient->gamesInRoomUpdate(refresh || !last_pump_update);
-			if (updates.size()) gamesInRoomChanged(updates);
-		}
 		else if (!m_disconnected)
 		{ 
 			alert_user("Connection to room lost.", 0);
@@ -375,7 +369,7 @@ private:
 std::unique_ptr<MetaserverClientUi>
 MetaserverClientUi::Create()
 {
-	return std::make_unique<SdlMetaserverClientUi>();
+	return std::unique_ptr<MetaserverClientUi>(new SdlMetaserverClientUi);
 }
 
 #endif // !defined(DISABLE_NETWORKING)

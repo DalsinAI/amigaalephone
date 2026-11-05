@@ -116,7 +116,6 @@ Feb 15, 2002 (Br'fin (Jeremy Parsons)):
 #include "SoundManager.h"
 #include "Plugins.h"
 #include "ephemera.h"
-#include "SoundsPatch.h"
 
 // LP change: added chase-cam init and render allocation
 #include "ChaseCam.h"
@@ -233,15 +232,13 @@ void set_map_file(FileSpecifier& File, bool loadScripts)
 
 	MapFileSpec = File;
 	set_scenario_images_file(File);
-	file_is_set = true;
-
-	Plugins::instance()->set_map_checksum(get_current_map_checksum());
-	
 	// Only need to do this here
 	if(loadScripts) LoadLevelScripts(File);
 
 	// Don't care whether there was an error when checking on the file's scenario images
 	clear_game_error();
+
+	file_is_set= true;
 }
 
 /* Set to the default map.. (Only if no map doubleclicked upon on startup.. */
@@ -262,11 +259,7 @@ bool use_map_file(
 	FileSpecifier File;
 	bool success= false;
 
-	if (file_is_set && get_current_map_checksum() == checksum)
-	{
-		success = true;
-	}
-	else if(find_wad_file_that_has_checksum(File, _typecode_scenario, strPATHS, checksum))
+	if(find_wad_file_that_has_checksum(File, _typecode_scenario, strPATHS, checksum))
 	{
 		set_map_file(File);
 		success= true;
@@ -288,8 +281,7 @@ dynamic_data get_dynamic_data_from_save(FileSpecifier& File)
 			auto wad = read_indexed_wad_from_file(MapFile, &header, 0, true);
 			if (wad)
 			{
-				bool result = get_dynamic_data_from_wad(wad, &dynamic_data_return);
-				assert(result);
+				get_dynamic_data_from_wad(wad, &dynamic_data_return);
 				free_wad(wad);
 			}
 		}
@@ -477,25 +469,6 @@ uint32 get_current_map_checksum(
 	return header.checksum;
 }
 
-static void create_players_for_new_game(short number_of_players, player_start_data* player_start_information)
-{
-	const short intended_local_player_index = game_is_networked ? NetGetLocalPlayerIndex() : 0;
-
-	/* Initialize the players-> note there may be more than one player in a */
-	/* non-network game, for playback.. */
-	for (int i = 0; i < number_of_players; ++i)
-	{
-		new_player_flags flags = (i == intended_local_player_index ? new_player_make_local_and_current : 0);
-		auto player_index = new_player(player_start_information[i].team,
-			player_start_information[i].color, player_start_information[i].identifier, flags);
-		assert(player_index == i);
-
-		/* Now copy in the name of the player.. */
-		assert(strlen(player_start_information[i].name) <= MAXIMUM_PLAYER_NAME_LENGTH);
-		strncpy(players[i].name, player_start_information[i].name, MAXIMUM_PLAYER_NAME_LENGTH + 1);
-	}
-}
-
 // ZZZ: split this out from new_game for sharing
 void set_saved_game_name_to_default()
 {
@@ -513,7 +486,10 @@ bool new_game(
 	struct entry_point *entry_point)
 {
 	assert(!network || number_of_players == NetGetNumberOfPlayers());
-		
+	
+	const short intended_local_player_index = network ? NetGetLocalPlayerIndex() : 0;
+	
+	short player_index, i;
 	bool success= true;
 
 	ResetPassedLua();
@@ -543,13 +519,22 @@ bool new_game(
 
 	/* Load the level */	
 	assert(file_is_set);
-	success= goto_level(entry_point, number_of_players, player_start_information);
+	success= goto_level(entry_point, true, number_of_players);
 	/* If we were able to load the map... */
 	if(success)
 	{
-		if (!film_profile.network_items)
+		/* Initialize the players-> note there may be more than one player in a */
+		/* non-network game, for playback.. */
+		for (i=0;i<number_of_players;++i)
 		{
-			create_players_for_new_game(number_of_players, player_start_information);
+			new_player_flags flags = (i == intended_local_player_index ? new_player_make_local_and_current : 0);
+			player_index= new_player(player_start_information[i].team,
+				player_start_information[i].color, player_start_information[i].identifier, flags);
+			assert(player_index==i);
+
+			/* Now copy in the name of the player.. */
+			assert(strlen(player_start_information[i].name)<=MAXIMUM_PLAYER_NAME_LENGTH);
+			strncpy(players[i].name, player_start_information[i].name, MAXIMUM_PLAYER_NAME_LENGTH+1);
 		}
 
 		/* we need to alert the function that reverts the game of the game setup so that
@@ -767,7 +752,6 @@ bool get_entry_points(vector<entry_point> &vec, int32 type)
 extern void LoadSoloLua();
 extern void LoadReplayNetLua();
 extern void LoadStatsLua();
-extern void LoadAchievementsLua();
 extern bool RunLuaScript();
 
 /* This is called when the game level is changed somehow */
@@ -776,11 +760,10 @@ extern bool RunLuaScript();
 /* Returns a short that is an OSErr... */
 bool goto_level(
 	struct entry_point *entry, 
-	short number_of_players,
-	player_start_data* player_start_information)
+	bool new_game,
+	short number_of_players)
 {
 	bool success= true;
-	bool new_game = player_start_information;
 
 	if(!new_game)
 	{
@@ -829,18 +812,14 @@ bool goto_level(
 		{
 			LoadReplayNetLua();
 		}
-		LoadAchievementsLua();
 		LoadStatsLua();
 
+		Music::instance()->PreloadLevelMusic();
 		set_game_error(SavedType,SavedError);
 		
 		if (!new_game)
 		{
 			recreate_players_for_new_level();
-		}
-		else if (film_profile.network_items)
-		{
-			create_players_for_new_game(number_of_players, player_start_information);
 		}
 		
 		/* Load the collections */
@@ -1073,12 +1052,6 @@ void load_polygons(
                         map_polygons[loop].type = _polygon_is_automatic_exit;
                         break;
                 }
-
-				// this is set on some m1 maps, but it's unknown what the flag
-				// does. Operating on the assumption that old m1 editors didn't
-				// clear out flags, just unset the flag. Otherwise the map will
-				// assert out later
-				map_polygons[loop].flags &= ~POLYGON_IS_DETACHED_BIT;
 			}
 			break;
 			
@@ -1282,7 +1255,6 @@ bool load_game_from_file(FileSpecifier& File, bool run_scripts)
 			{
 				LoadSoloLua();
 			}
-			LoadAchievementsLua();
 			LoadStatsLua();
 			set_game_error(SavedType,SavedError);
 		}
@@ -1302,6 +1274,8 @@ void setup_revert_game_info(
 	obj_copy(revert_game_data.entry_point, *entry);
 }
 
+extern void reset_messages();
+
 bool revert_game(
 	void)
 {
@@ -1317,28 +1291,33 @@ bool revert_game(
 		successful= load_game_from_file(revert_game_data.SavedGame, true);
 		if (successful) 
 		{
+			Music::instance()->PreloadLevelMusic();
 			RunLuaScript();
 			
 			// LP: added for loading the textures if one had died on another level;
 			// this gets around WZ's moving of this line into make_restored_game_relevant()
 			successful = entering_map(true /*restoring game*/);
 		}
+
+		/* And they don't get to continue. */
+		stop_recording();
 	}
 	else
 	{
 		/* This was the totally evil line discussed above. */
 		successful= new_game(1, false, &revert_game_data.game_information, &revert_game_data.player_start, 
 			&revert_game_data.entry_point);
+			
+		/* And rewind so that the last player is used. */
+		rewind_recording();
 	}
-
-	/* And rewind so that the last player is used. */
-	rewind_recording();
 
 	if(successful)
 	{
 		update_interface(NONE);
 		ChaseCam_Reset();
 		ResetFieldOfView();
+		reset_messages();
 		ReloadViewContext();
 	}
 	
@@ -1442,8 +1421,6 @@ bool save_game_file(FileSpecifier& File, const std::string& metadata, const std:
 	int32 offset, wad_length;
 	struct directory_entry entries[2];
 	struct wad_data *wad, *meta_wad;
-
-	clear_game_error();
 
 	/* Save off the random seed. */
 	dynamic_world->random_seed= get_random_seed();
@@ -1782,10 +1759,6 @@ bool process_map_wad(
 	data= (uint8 *)extract_type_from_wad(wad, SHAPE_PATCH_TAG, &data_length);
 	set_shapes_patch_data(data, data_length);
 
-	/* Extract embedded sounds */
-	data= (uint8 *)extract_type_from_wad(wad, SOUND_PATCH_TAG, &data_length);
-	set_sounds_patch_data(data, data_length);
-
 	/* Extract MMLS */
 	data= (uint8 *)extract_type_from_wad(wad, MMLS_TAG, &data_length);
 	SetMMLS(data, data_length);
@@ -1876,11 +1849,13 @@ bool process_map_wad(
 		MapIndexList.resize(count);
 		StreamToList(data,map_indexes,count);
 		
-		bool result = get_player_data_from_wad(wad);
-		assert(result);
+		data= (uint8 *)extract_type_from_wad(wad, PLAYER_STRUCTURE_TAG, &data_length);
+		count= data_length/SIZEOF_player_data;
+		assert(count*SIZEOF_player_data==data_length);
+		unpack_player_data(data,players,count);
+		team_damage_from_player_data();
 		
-		result = get_dynamic_data_from_wad(wad, dynamic_world);
-		assert(result);
+		get_dynamic_data_from_wad(wad, dynamic_world);
 		
 		data= (uint8 *)extract_type_from_wad(wad, OBJECT_STRUCTURE_TAG, &data_length);
 		count= data_length/SIZEOF_object_data;
@@ -1907,7 +1882,7 @@ bool process_map_wad(
 		assert(count*SIZEOF_effect_data==data_length);
 		vassert(count <= MAXIMUM_EFFECTS_PER_MAP,
 			csprintf(temporary,"Number of effects %zu > limit %u",count,MAXIMUM_EFFECTS_PER_MAP));
-		unpack_effect_data(data,EffectList.data(),count);
+		unpack_effect_data(data,effects,count);
 
 		data= (uint8 *)extract_type_from_wad(wad, PROJECTILES_STRUCTURE_TAG, &data_length);
 		count= data_length/SIZEOF_projectile_data;
@@ -1972,21 +1947,12 @@ bool process_map_wad(
 	return true;
 }
 
-bool get_dynamic_data_from_wad(wad_data* wad, dynamic_data* dest)
+void get_dynamic_data_from_wad(wad_data* wad, dynamic_data* dest)
 {
 	size_t data_length;
 	uint8* data = (uint8*)extract_type_from_wad(wad, DYNAMIC_STRUCTURE_TAG, &data_length);
-	return data && data_length == SIZEOF_dynamic_data ? (bool)unpack_dynamic_data(data, dest, 1) : false;
-}
-
-bool get_player_data_from_wad(wad_data* wad)
-{
-	size_t data_length;
-	auto data = (uint8*)extract_type_from_wad(wad, PLAYER_STRUCTURE_TAG, &data_length);
-	auto count = data_length / SIZEOF_player_data;
-	bool success = count * SIZEOF_player_data == data_length ? (bool)unpack_player_data(data, players, count) : false;
-	if (success) team_damage_from_player_data();
-	return success;
+	assert(data_length == SIZEOF_dynamic_data);
+	unpack_dynamic_data(data, dest, 1);
 }
 
 static void allocate_map_structure_for_map(
@@ -2104,7 +2070,6 @@ save_game_data export_data[]=
 	{ AMBIENT_SOUND_TAG, SIZEOF_ambient_sound_image_data, true },
 	{ RANDOM_SOUND_TAG, SIZEOF_random_sound_image_data, true },
 	{ SHAPE_PATCH_TAG, sizeof(byte), true },
-	{ SOUND_PATCH_TAG, sizeof(byte), true },
 //	{ PLATFORM_STRUCTURE_TAG, SIZEOF_platform_data, true },
 };
 
@@ -2134,7 +2099,6 @@ struct save_game_data save_data[]=
 
 	// GHS: save the new embedded shapes
 	{ SHAPE_PATCH_TAG, sizeof(byte), true },
-	{ SOUND_PATCH_TAG, sizeof(byte), true },
 
 	{ MMLS_TAG, sizeof(byte), true },
 	{ LUAS_TAG, sizeof(byte), true },
@@ -2407,16 +2371,13 @@ static uint8 *tag_to_global_array_and_size(
 		case WEAPONS_PHYSICS_TAG:
 			count= get_number_of_weapon_types();
 			break;
-		case SHAPE_PATCH_TAG:
+	        case SHAPE_PATCH_TAG:
 			get_shapes_patch_data(count);
 			break;
-		case SOUND_PATCH_TAG:
-			get_sounds_patch_data(count);
-			break;
-	    case MMLS_TAG:
+	        case MMLS_TAG:
 			GetMMLS(count);
 			break;
-	    case LUAS_TAG:
+	        case LUAS_TAG:
 			GetLUAS(count);
 			break;
 		case LUA_STATE_TAG:
@@ -2488,7 +2449,7 @@ static uint8 *tag_to_global_array_and_size(
 			pack_monster_data(array,monsters,count);
 			break;
 		case EFFECTS_STRUCTURE_TAG:
-			pack_effect_data(array,EffectList.data(),count);
+			pack_effect_data(array,effects,count);
 			break;
 		case PROJECTILES_STRUCTURE_TAG:
 			pack_projectile_data(array,projectiles,count);
@@ -2532,16 +2493,13 @@ static uint8 *tag_to_global_array_and_size(
 		case WEAPONS_PHYSICS_TAG:
 			pack_weapon_definition(array,count);
 			break;
-		case SHAPE_PATCH_TAG:
+	        case SHAPE_PATCH_TAG:
 			memcpy(array, get_shapes_patch_data(count), count);
 			break;
-		case SOUND_PATCH_TAG:
-			memcpy(array, get_sounds_patch_data(count), count);
-			break;
-		case MMLS_TAG:
+	        case MMLS_TAG:
 			memcpy(array, GetMMLS(count), count);
 			break;
-		case LUAS_TAG:
+	        case LUAS_TAG:
 			memcpy(array, GetLUAS(count), count);
 			break;
 		case LUA_STATE_TAG:

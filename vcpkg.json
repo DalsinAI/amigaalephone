@@ -1,6 +1,6 @@
 {
    "name":"alephone",
-   "version-date":"2025-08-29",
+   "version-date":"2023-01-19",
    "dependencies":[
       {
          "name":"boost-algorithm"
@@ -12,36 +12,25 @@
          "name":"boost-property-tree"
       },
       {
-         "name":"boost-iostreams",
-         "default-features":false
+         "name":"boost-iostreams"
       },
       {
          "name":"boost-filesystem"
       },
       {
-         "name":"boost-lockfree"
-      },
-      {
-         "name":"boost-dll"
-      },
-      {
-         "name":"sdl2",
-         "platform": "!linux"
+         "name":"sdl2"
       },
       {
          "name":"sdl2-image",
          "features":[
             "libjpeg-turbo"
-         ],
-         "platform": "!linux"
+         ]
       },
       {
-         "name":"asio",
-         "platform": "!linux"
+         "name":"sdl2-net"
       },
       {
-         "name":"sdl2-ttf",
-         "platform": "!linux"
+         "name":"sdl2-ttf"
       },
       {
          "name":"curl",
@@ -52,43 +41,31 @@
          "platform":"windows"
       },
       {
+         "name":"speex"
+      },
+      {
+         "name":"speexdsp"
+      },
+      {
          "name":"zziplib"
+      },
+      {
+         "name":"ffmpeg",
+         "features":[
+            "vorbis",
+            "vpx"
+         ]
       },
       {
          "name":"miniupnpc"
       },
       {
-         "name":"nativefiledialog-extended"
+         "name":"nativefiledialog"
       },
-      {
-         "name":"libsndfile"
-      },
-      {
-         "name":"openal-soft",
-         "platform": "!linux"
-      },
-      {
-         "name":"catch2",
-         "platform": "!linux"
-      },
-      {
-         "name":"libyuv"
-      },
-      {
-         "name":"steamworks-sdk"
-      },
-      {
-          "name":"matroska"
-      },
-      {
-          "name":"libvpx"
-      }
+	  {
+	      "name":"libsndfile",
+		  "default-features": false
+	  }
    ],
-   "overrides":[
-      {
-         "name":"openal-soft",
-         "version":"1.23.1",
-         "port-version":2
-      }
-   ]
+   "builtin-baseline":"6ca56aeb457f033d344a7106cb3f9f1abf8f4e98"
 }

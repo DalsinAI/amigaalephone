@@ -160,7 +160,7 @@ struct ScreenMessage
 		Len = 256
 	};
 
-	uint64_t ExpirationTime; // machine ticks the screen message expires at
+	uint32_t ExpirationTime; // machine ticks the screen message expires at
 	char Text[Len];		// Text to display
 	
 	ScreenMessage(): ExpirationTime(machine_tick_count()) {Text[0] = 0;}
@@ -382,6 +382,8 @@ void reset_screen()
 	
 	// LP change:
 	ResetFieldOfView();
+
+	reset_messages();
 }
 
 // LP change: resets field of view to whatever the player had had when reviving
@@ -390,25 +392,6 @@ void ResetFieldOfView()
 	world_view->tunnel_vision_active = false;
 
 	if (current_player->extravision_duration)
-	{
-		world_view->field_of_view = EXTRAVISION_FIELD_OF_VIEW;
-		world_view->target_field_of_view = EXTRAVISION_FIELD_OF_VIEW;
-	}
-	else
-	{
-		world_view->field_of_view = NORMAL_FIELD_OF_VIEW;
-		world_view->target_field_of_view = NORMAL_FIELD_OF_VIEW;
-	}
-}
-
-void UpdateFieldOfView()
-{
-	if (world_view->tunnel_vision_active)
-	{
-		world_view->target_field_of_view = TUNNEL_VISION_FIELD_OF_VIEW;
-		world_view->target_field_of_view = TUNNEL_VISION_FIELD_OF_VIEW;
-	}
-	else if (current_player->extravision_duration)
 	{
 		world_view->field_of_view = EXTRAVISION_FIELD_OF_VIEW;
 		world_view->target_field_of_view = EXTRAVISION_FIELD_OF_VIEW;
@@ -518,15 +501,7 @@ static short DisplayTextStyle = 0;
 /*static*/ void DisplayTextCursor(SDL_Surface *s, short BaseX, short BaseY, const char *Text, short Offset, unsigned char r = 0xff, unsigned char g = 0xff, unsigned char b = 0xff)
 {
 	SDL_Rect cursor_rect;
-	int w;
-#ifdef HAVE_OPENGL
-    if (!OGL_TextWidth(Text, Offset, w))
-#endif
-	{
-		w = text_width(Text, Offset, DisplayTextFont, DisplayTextStyle);
-	}
-
-	cursor_rect.x = BaseX + w;
+	cursor_rect.x = BaseX + text_width(Text, Offset, DisplayTextFont, DisplayTextStyle);
 	cursor_rect.w = 1;
 	cursor_rect.y = BaseY - DisplayTextFont->get_ascent();
 	cursor_rect.h = DisplayTextFont->get_height();
@@ -555,6 +530,7 @@ static void update_fps_display(SDL_Surface *s)
 {
 	if (displaying_fps && !player_in_terminal_mode(current_player_index))
 	{
+		uint32 ticks = machine_tick_count();
 		char fps[sizeof("1000 fps (10000 ms)")];
 		char ms[sizeof("(10000 ms)")];
 
@@ -569,7 +545,7 @@ static void update_fps_display(SDL_Surface *s)
 			
 			int latency = NetGetLatency();
 			if (latency > -1)
-				sprintf(ms, "(%i ms)", std::min(latency, 10000));
+				sprintf(ms, "(%i ms)", latency);
 			else
 				ms[0] = '\0';
 			
@@ -781,6 +757,78 @@ static void DisplayMessages(SDL_Surface *s)
 }
 
 extern short local_player_index;
+extern bool game_is_networked;
+
+static void DisplayNetMicStatus(SDL_Surface *s)
+{
+	if (!game_is_networked) return;
+
+	// the net mic status is a message, and a colored text "icon"
+	string icon;
+	string status;
+	SDL_Color iconColor;
+
+	if (!current_netgame_allows_microphone())
+	{
+		if (dynamic_world->speaking_player_index == local_player_index)
+		{
+			status = "disabled";
+			icon = "  x";
+			iconColor.r = 0xff;
+			iconColor.g = iconColor.b = 0x0;
+			iconColor.a = 0xff;
+
+		}
+		else
+		{
+			return;
+		}
+	}
+	else if (dynamic_world->speaking_player_index == local_player_index)
+	{
+		if (GET_GAME_OPTIONS() & _force_unique_teams)
+			status = "all";
+		else
+			status = "team";
+		icon = "<!>";
+
+		player_data *player = get_player_data(dynamic_world->speaking_player_index);
+		if (GET_GAME_OPTIONS() & _force_unique_teams)
+			_get_interface_color(PLAYER_COLOR_BASE_INDEX + player->color, &iconColor);
+		else
+			_get_interface_color(PLAYER_COLOR_BASE_INDEX + player->team, &iconColor);
+	} 
+	else if (dynamic_world->speaking_player_index != NONE)
+	{
+		// find the name and color of the person who is speaking
+		player_data *player = get_player_data(dynamic_world->speaking_player_index);
+		status = player->name;
+		_get_interface_color(PLAYER_COLOR_BASE_INDEX + player->color, &iconColor);
+		icon = ">!<";
+	}
+	else
+	{
+		return;
+	}
+
+	FontSpecifier& Font = GetOnScreenFont();
+
+	DisplayTextDest = s;
+	DisplayTextFont = Font.Info;
+	DisplayTextStyle = Font.Style;
+
+	auto text_margins = alephone::Screen::instance()->lua_text_margins;
+	short Y = s->h - text_margins.bottom - Font.LineSpacing / 3;
+	if (Console::instance()->input_active())
+	{
+		Y -= Font.LineSpacing;
+	}
+	short Xicon = s->w - text_margins.right - DisplayTextWidth(icon.c_str()) - Font.LineSpacing / 3;
+	short Xstatus = Xicon - DisplayTextWidth(" ") - DisplayTextWidth(status.c_str());
+
+	DisplayText(Xicon, Y, icon.c_str(), iconColor.r, iconColor.g, iconColor.b);
+	DisplayText(Xstatus, Y, status.c_str());
+}
 
 static const SDL_Color Green = { 0x0, 0xff, 0x0, 0xff };
 static const SDL_Color Yellow = { 0xff, 0xff, 0x0, 0xff };
@@ -803,8 +851,6 @@ static void DisplayScores(SDL_Surface *s)
 	int WPing = CWidth * kPingWidth;
 	int WJitter = CWidth * kPingWidth;
 	int WErrors = CWidth * kPingWidth;
-	static const int kSyncWidth = 12;
-	int WSync = CWidth * kSyncWidth;
 	static const int kIdWidth = 2;
 	int WId = CWidth * kIdWidth;
 
@@ -815,7 +861,7 @@ static void DisplayScores(SDL_Surface *s)
 	DisplayTextStyle = Font.Style;
 
 	int H = Font.LineSpacing * (dynamic_world->player_count + 1);
-	int W = WName + WScore + WPing + WJitter + WSync + WErrors + WId + 6 * CWidth;
+	int W = WName + WScore + WPing + WJitter + WErrors + WId;
 
 	auto text_margins = alephone::Screen::instance()->lua_text_margins;
 	int X = text_margins.left + (s->w - text_margins.right - W) / 2;
@@ -825,8 +871,7 @@ static void DisplayScores(SDL_Surface *s)
 	int XScore = XName + WName + CWidth;
 	int XPing = XScore + WScore + CWidth;
 	int XJitter = XPing + WPing + CWidth;
-	int XSync = XJitter + WPing + CWidth;
-	int XErrors = XSync + WSync + CWidth;
+	int XErrors = XJitter + WPing + CWidth;
 	int XId = XErrors + WPing + CWidth;
 
 	// draw headers
@@ -834,7 +879,6 @@ static void DisplayScores(SDL_Surface *s)
 	DisplayText(XScore + WScore - DisplayTextWidth("Score"), Y, "Score", 0xbf, 0xbf, 0xbf);
 	DisplayText(XPing + WPing - DisplayTextWidth("Delay"), Y, "Delay", 0xbf, 0xbf, 0xbf);
 	DisplayText(XJitter + WPing - DisplayTextWidth("Jitter"), Y, "Jitter", 0xbf, 0xbf, 0xbf);
-	DisplayText(XSync + WSync - DisplayTextWidth("Sync"), Y, "Sync", 0xbf, 0xbf, 0xbf);
 	DisplayText(XErrors + WPing - DisplayTextWidth("Errors"), Y, "Errors", 0xbf, 0xbf, 0xbf);
 	DisplayText(XId + WId - DisplayTextWidth("ID"), Y, "ID", 0xbf, 0xbf, 0xbf);
 	Y += Font.LineSpacing;
@@ -913,25 +957,6 @@ static void DisplayScores(SDL_Surface *s)
 		temporary[kPingWidth + 1] = '\0';
 		DisplayText(XJitter + WPing - DisplayTextWidth(temporary), Y, temporary, color2.r, color2.g, color2.b);
 
-		if (player->netdead)
-		{
-			color2 = Gray;
-			strncpy(temporary, "DC", 256);
-		}
-		else if (player->net_oos)
-		{
-			color2 = Red;
-			strncpy(temporary, "Desynced", 256);
-		}
-		else
-		{
-			color2 = Green;
-			strncpy(temporary, "Synced", 256);
-		}
-
-		temporary[kSyncWidth + 1] = '\0';
-		DisplayText(XSync + WSync - DisplayTextWidth(temporary), Y, temporary, color2.r, color2.g, color2.b);
-
 		sprintf(temporary, "%i", stats.errors);
 		temporary[kPingWidth + 1] = '\0';
 		if (stats.errors > 0) 
@@ -946,79 +971,6 @@ static void DisplayScores(SDL_Surface *s)
 		Y += Font.LineSpacing;
 	}
 }
-
-static void DisplayNetLoadingScreen(SDL_Surface* s)
-{
-	// assume a proportional font
-	int CWidth = DisplayTextWidth("W");
-
-	// field widths
-	static const int kNameWidth = 20;
-	int WName = CWidth * kNameWidth;
-	static const int kStatusWidth = 20;
-	int WStatus = CWidth * kStatusWidth;
-
-	FontSpecifier& Font = GetOnScreenFont();
-
-	DisplayTextDest = s;
-	DisplayTextFont = Font.Info;
-	DisplayTextStyle = Font.Style;
-
-	int H = Font.LineSpacing * (dynamic_world->player_count + 1);
-	int W = WName + WStatus + CWidth;
-
-	int X = (s->w - W) / 2;
-	int Y = std::max((s->h - H) / 2, Font.LineSpacing * NumScreenMessages) + Font.LineSpacing;
-
-	int XName = X;
-	int XStatus = XName + WName + CWidth;
-
-	// draw headers
-	DisplayText(XName, Y, "Name", 0xbf, 0xbf, 0xbf);
-	DisplayText(XStatus + WStatus - DisplayTextWidth("Status"), Y, "Status", 0xbf, 0xbf, 0xbf);
-
-	Y += Font.LineSpacing;
-
-	auto nb_loading_dots = ((uint64_t)(machine_tick_count() / (2000.f / 3)) % 4);
-
-	for (int i = 0; i < dynamic_world->player_count; ++i)
-	{
-		const auto& player = get_player_data(i);
-		const auto& stats = NetGetStats(i);
-
-		SDL_Color color;
-		_get_interface_color(PLAYER_COLOR_BASE_INDEX + player->color, &color);
-
-		strncpy(temporary, player->name, 256);
-		temporary[kNameWidth + 1] = '\0';
-		DisplayText(XName, Y, temporary, color.r, color.g, color.b);
-
-		std::string player_status;
-
-		switch (stats.pregame_state)
-		{
-			case NetworkStats::valid:
-				color = Green;
-				player_status = "Ready";
-				break;
-			case NetworkStats::disconnected:
-				color = Red;
-				player_status = "Disconnected";
-				break;
-			case NetworkStats::invalid:
-			default:
-				color = Yellow;
-				player_status = "Loading" + std::string(nb_loading_dots, '.') + std::string(3 - nb_loading_dots, ' ');
-				break;
-		}
-
-		sprintf(temporary, "%s", player_status.c_str());
-		DisplayText(XStatus + WStatus - DisplayTextWidth(temporary), Y, temporary, color.r, color.g, color.b);
-
-		Y += Font.LineSpacing;
-	}
-}
-
 
 static void set_overhead_map_status( /* it has changed, this is the new status */
 	bool status)

@@ -1,0 +1,138 @@
+# Aleph One (Marathon engine) for AmigaOS 3.x, 68040/68060 + FPU, on
+# OpenGPU's SDL 2, software renderer.
+#
+#   make -f amiga/Makefile.amigaos STOVE=/path/to/openamigagcc-16.2.0-open4 \
+#        NDK=/path/to/OpenNDK/Include_H SDL2KIT=/path/to/opengpu-sdk \
+#        ZLIB=/path/to/zlib-1.3.1 BOOST=/path/to/boost_1_83_0
+#
+# STOVE is GFOpenAmigaGCC 16.2.0-open4 or later. SDL2KIT is the OpenGPU
+# developer kit: libSDL2.a, libSDL2_image.a (the program's halves of
+# LIBS:OpenGPU/SDL2.module and SDL2_image.module) and libSDL2_ttf.a
+# (FreeType inside). BOOST is a Boost source tree (1.83.0 is what was
+# built with); only its headers are used: Boost.Filesystem, the one compiled
+# Boost library Aleph One asks for, is replaced by amiga/amiga_fs.cpp. ZLIB's
+# sources are built in (Aleph One reads compressed films and plugin data).
+# Output: build/amigaos/AlephOne/ with the program, the engine's own data
+# (MML, the default theme), its ReadMe, Data-ReadMe, the GPL and icons. No
+# Marathon scenario data is packaged: see amiga/Data-ReadMe.
+
+STOVE   ?= $(HOME)/CradleLab/toolchain/openamigagcc-16.2.0-open4-x86_64-linux
+NDK     ?= $(HOME)/CradleLab/gfopensdk/OpenNDK/Include_H
+SDL2KIT ?= /mnt/amigachrome/team2/deps/opengpu-sdk
+ZLIB    ?= $(HOME)/CradleLab/zlib-1.3.1
+BOOST   ?= .deps/boost_1_83_0
+CC      = $(STOVE)/bin/m68k-amigaos-gcc
+CXX     = $(STOVE)/bin/m68k-amigaos-g++
+CPU     ?= -m68040 -m68881
+# -fno-tree-loop-distribute-patterns: GCC 16's loop miscompile (the kit's
+# sdl2-config gives it for GCC 16 too).
+OPT     ?= -O2 -fomit-frame-pointer -fno-tree-loop-distribute-patterns
+
+SRCDIRS = CSeries FFmpeg Files GameWorld Input Lua Misc ModelView Network \
+          Network/Metaserver RenderMain RenderOther Sound TCPMess XML
+DEFS    = -DHAVE_CONFIG_H -DSDL -D__amigaos__ \
+          -DBOOST_SYSTEM_NO_DEPRECATED -DBOOST_NO_CXX11_HDR_THREAD
+INC     = -Iamiga -Iamiga/include -ISource_Files $(SRCDIRS:%=-ISource_Files/%) \
+          -I$(SDL2KIT)/include -I$(SDL2KIT)/include/SDL2 -I$(BOOST) \
+          -I$(ZLIB) -I$(NDK)
+# Upstream's own files are built with the compiler's default warnings, as
+# upstream's configure builds them (it adds no -Wall); the port's files in
+# amiga/ with -Wall -Wextra.
+WARN    =
+CFLAGS  = -noixemul $(OPT) $(CPU) $(WARN) $(DEFS) $(INC)
+CXXFLAGS = -noixemul -std=gnu++17 $(OPT) $(CPU) $(WARN) $(DEFS) $(INC)
+AMIGAWARN = -Wall -Wextra
+ZFLAGS  = -noixemul -O2 $(CPU) -I$(ZLIB) -include unistd.h
+LDFLAGS = -noixemul $(CPU)
+LIBS    = -L$(SDL2KIT)/lib -lSDL2_ttf -lSDL2_image -lSDL2_net -lSDL2 -lsocket -lm
+BUILD   = build/amigaos
+OBJDIR  = $(BUILD)/obj
+OUT     = $(BUILD)/AlephOne
+PROG    = AlephOne
+
+# As Source_Files/*/Makefile.am build alephone without OpenGL, FFmpeg or
+# zziplib, and none of another system's files.
+EXCLUDE = Source_Files/Files/SDL_rwops_zzip.c \
+          Source_Files/FFmpeg/SDL_ffmpeg.c \
+          Source_Files/RenderOther/IMG_savepng.c \
+          Source_Files/RenderMain/OGL_Shader.cpp \
+          Source_Files/Misc/thread_priority_sdl_posix.cpp \
+          Source_Files/Misc/thread_priority_sdl_win32.cpp \
+          Source_Files/Misc/thread_priority_sdl_macosx.cpp \
+          Source_Files/Network/network_microphone_sdl_win32.cpp \
+          Source_Files/Network/network_microphone_coreaudio.cpp \
+          Source_Files/Network/network_microphone_sdl_alsa.cpp \
+          Source_Files/RenderMain/Rasterizer_Shader.cpp \
+          Source_Files/RenderMain/RenderRasterize_Shader.cpp \
+          Source_Files/Network/network_dummy.cpp \
+          Source_Files/Lua/lua.c Source_Files/Lua/luac.c
+SRC_ALL = $(wildcard $(SRCDIRS:%=Source_Files/%/*.cpp)) \
+          $(wildcard $(SRCDIRS:%=Source_Files/%/*.c)) \
+          Source_Files/shell.cpp Source_Files/shell_misc.cpp \
+          Source_Files/shell_options.cpp
+SRC     = $(filter-out $(EXCLUDE),$(SRC_ALL))
+OBJS    = $(patsubst %,$(OBJDIR)/%.o,$(basename $(SRC))) \
+          $(OBJDIR)/amiga/amiga_fs.o $(OBJDIR)/amiga/amiga_main.o \
+          $(OBJDIR)/amiga/endian_check.o \
+          $(OBJDIR)/amiga/stack.o $(OBJDIR)/amiga/pthread_stubs.o
+ZSRC    = adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
+          infback inffast inflate inftrees trees uncompr zutil
+ZOBJS   = $(ZSRC:%=$(OBJDIR)/zlib/%.o)
+
+# The engine's own data, as data/Makefile.am and data/default_theme install
+# it in pkgdatadir: the MML scripts and the default theme plugin.
+MML     = data/Interface_Rects.mml data/Transparent_Liquids.mml \
+          data/Transparent_Sprites.mml
+THEME   = data/default_theme
+ICONS   = $(wildcard amiga/icons/*.info)
+
+all: $(OUT)/$(PROG) package
+
+$(OUT)/$(PROG): $(OBJS) $(ZOBJS) | $(OUT)
+	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(ZOBJS) $(LIBS)
+
+package: $(OUT)/$(PROG) $(MML) $(ICONS) AMIGA_PORT.md amiga/Data-ReadMe COPYING
+	mkdir -p $(OUT)/MML $(OUT)/Scenario $(OUT)/Plugins/Default_Theme/resources
+	cp $(MML) $(OUT)/MML/
+	cp $(THEME)/Plugin.xml $(OUT)/Plugins/Default_Theme/
+	cp $(THEME)/resources/* $(OUT)/Plugins/Default_Theme/resources/
+	cp AMIGA_PORT.md $(OUT)/ReadMe
+	cp amiga/Data-ReadMe $(OUT)/Data-ReadMe
+	cp COPYING $(OUT)/COPYING.txt
+	cp amiga/icons/AlephOne.info amiga/icons/ReadMe.info \
+	   amiga/icons/Data-ReadMe.info amiga/icons/COPYING.txt.info \
+	   amiga/icons/Scenario.info amiga/icons/MML.info \
+	   amiga/icons/Plugins.info $(OUT)/
+	cp amiga/icons/Default_Theme.info $(OUT)/Plugins/
+	cp amiga/icons/resources.info $(OUT)/Plugins/Default_Theme/
+	cp amiga/icons/AlephOne-drawer.info $(BUILD)/AlephOne.info
+
+$(OBJDIR)/amiga/%.o: amiga/%.cpp amiga/config.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(AMIGAWARN) -c -o $@ $<
+
+$(OBJDIR)/amiga/%.o: amiga/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(AMIGAWARN) -c -o $@ $<
+
+$(OBJDIR)/%.o: %.cpp amiga/config.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.o: %.c amiga/config.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/zlib/%.o: $(ZLIB)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(ZFLAGS) -c -o $@ $<
+
+objs: $(OBJS) $(ZOBJS)
+
+$(OUT):
+	mkdir -p $@
+
+clean:
+	rm -rf $(BUILD)
+
+.PHONY: all package objs clean

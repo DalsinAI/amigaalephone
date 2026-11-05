@@ -24,8 +24,6 @@ HUD_RENDERER_LUA.H
 
 #include "HUDRenderer.h"
 
-#include <stdexcept>
-
 struct blip_info {
 	short mtype;
 	short intensity;
@@ -109,8 +107,6 @@ protected:
 
 	void SetClipPlane(int x, int y, int c_x, int c_y, int radius) {}
 	void DisableClipPlane(void) {}
-
-	int TextWidth(const char*, short) override { throw std::logic_error("Unimplemented"); }
 };
 
 HUD_Lua_Class *Lua_HUDInstance();

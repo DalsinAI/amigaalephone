@@ -363,9 +363,8 @@ uint32 process_aim_input(uint32 action_flags, fixed_yaw_pitch delta)
 			action_flags = SET_ABSOLUTE_YAW(action_flags, encode(payload, ABSOLUTE_YAW_BITS)) | _absolute_yaw_mode;
 		
 		// Update virtual yaw
-		auto residual_limit = (FIXED_ONE / 2) - 1;
-		vir_aim_delta.yaw = classic_precision ? 0 : std::clamp(target - payload * FIXED_ONE, -residual_limit, residual_limit);
-		assert(std::abs(vir_aim_delta.yaw) <= residual_limit);
+		vir_aim_delta.yaw = classic_precision ? 0 : target - payload*FIXED_ONE;
+		assert(std::abs(vir_aim_delta.yaw) <= FIXED_ONE/2);
 	}
 	
 	// Explicit and automatic recentering do not occur under absolute pitch mode; therefore we
@@ -385,9 +384,8 @@ uint32 process_aim_input(uint32 action_flags, fixed_yaw_pitch delta)
 			action_flags = SET_ABSOLUTE_PITCH(action_flags, encode(payload, ABSOLUTE_PITCH_BITS)) | _absolute_pitch_mode;
 		
 		// Update virtual pitch
-		auto residual_limit = (FIXED_ONE / 2) - 1;
-		vir_aim_delta.pitch = classic_precision ? 0 : std::clamp(target - payload * FIXED_ONE, -residual_limit, residual_limit);
-		assert(std::abs(vir_aim_delta.pitch) <= residual_limit);
+		vir_aim_delta.pitch = classic_precision ? 0 : target - payload*FIXED_ONE;
+		assert(std::abs(vir_aim_delta.pitch) <= FIXED_ONE/2);
 	}
 	
 	return action_flags;
@@ -866,8 +864,8 @@ static void physics_update(
 	{
 		small_enough_velocity = SMALL_ENOUGH_VELOCITY;
 	}
-	if (std::abs(variables->external_velocity.k)<small_enough_velocity &&
-		std::abs(variables->floor_height-new_position.z)<CLOSE_ENOUGH_TO_FLOOR)
+	if (ABS(variables->external_velocity.k)<small_enough_velocity &&
+		ABS(variables->floor_height-new_position.z)<CLOSE_ENOUGH_TO_FLOOR)
 	{
 		variables->external_velocity.k= 0, new_position.z= variables->floor_height;
 		variables->flags&= ~(_BELOW_GROUND_BIT|_ABOVE_GROUND_BIT);
@@ -884,7 +882,7 @@ static void physics_update(
 		_fixed delta= (delta_z<=0) ? constants->external_deceleration : (constants->external_deceleration>>2);
 		int32 magnitude= isqrt(dx*dx + dy*dy);
 
-		if (magnitude && magnitude> std::abs(delta))
+		if (magnitude && magnitude>ABS(delta))
 		{
 			variables->external_velocity.i-= (dx*delta)/magnitude;
 			variables->external_velocity.j-= (dy*delta)/magnitude;
@@ -909,9 +907,9 @@ static void physics_update(
 		update phase until he lands. */
 	variables->flags&= (uint16)~_STEP_PERIOD_BIT;
 	if (constants->maximum_forward_velocity)
-		variables->step_amplitude= (MAX(std::abs(variables->velocity), std::abs(variables->perpendicular_velocity))*FIXED_ONE)/constants->maximum_forward_velocity;
+		variables->step_amplitude= (MAX(ABS(variables->velocity), ABS(variables->perpendicular_velocity))*FIXED_ONE)/constants->maximum_forward_velocity;
 	else	// CB: "Missed Island" physics would produce a division by 0
-		variables->step_amplitude= MAX(std::abs(variables->velocity), std::abs(variables->perpendicular_velocity))*FIXED_ONE;
+		variables->step_amplitude= MAX(ABS(variables->velocity), ABS(variables->perpendicular_velocity))*FIXED_ONE;
 	if (delta_z>=0)
 	{
 		if (variables->velocity||variables->perpendicular_velocity)

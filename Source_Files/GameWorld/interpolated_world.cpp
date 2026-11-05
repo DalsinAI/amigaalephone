@@ -42,7 +42,7 @@ static const world_distance default_speed_limit = WORLD_ONE_HALF;
 static const world_distance projectile_speed_limit = WORLD_ONE;
 
 bool world_is_interpolated;
-static uint64_t start_machine_tick;
+static uint32_t start_machine_tick;
 
 extern struct view_data* world_view;
 
@@ -198,7 +198,6 @@ void init_interpolated_world()
 	}
 
 	previous_tick_world_view.origin_polygon_index = NONE;
-	current_tick_world_view.origin_polygon_index = NONE;
 
 	weapon_display_information data;
 	short count = 0;
@@ -650,8 +649,7 @@ void update_interpolated_world(float heartbeat_fraction)
 			continue;
 		}
 
-		if (!should_interpolate(prev->location, next->location) ||
-			std::abs(prev->location.z - next->location.z) > default_speed_limit)
+		if (!should_interpolate(prev->location, next->location))
 		{
 			continue;
 		}
@@ -833,18 +831,13 @@ static void interpolate_weapon_display_information(
 	{
 		return;
 	}
-
-	if (index >= previous_tick_weapon_display.size())
-	{
-		return;
-	}
 	
 	static constexpr int _shell_casing_type = 1; // from weapons.cpp
 
 	weapon_display_information* next;
 	weapon_display_information* prev;
 
-	if ((data->interpolation_data & 0x3) == _shell_casing_type)
+	if (data->interpolation_data & 0x3 == _shell_casing_type)
 	{
 		next = &current_tick_weapon_display[index];
 		prev = &previous_tick_weapon_display[index];
@@ -864,6 +857,11 @@ static void interpolate_weapon_display_information(
 	}
 	else
 	{
+		if (index >= previous_tick_weapon_display.size())
+		{
+			return;
+		}
+
 		next = &current_tick_weapon_display[index];
 		prev = &previous_tick_weapon_display[index];
 	}
@@ -874,6 +872,9 @@ static void interpolate_weapon_display_information(
 	{
 		return;
 	}
+	
+	auto dx = next->horizontal_position - prev->horizontal_position;
+	auto dy = next->vertical_position - prev->vertical_position;
 
 	data->vertical_position = lerp(prev->vertical_position,
 								   next->vertical_position,

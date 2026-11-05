@@ -93,7 +93,6 @@ namespace alephone
 
 		int height();
 		int width();
-		float pixel_scale();
 		int window_height();
 		int window_width();
 		bool hud();
@@ -196,6 +195,7 @@ bool map_is_translucent(void);
 void enter_screen(void);
 void exit_screen(void);
 
+void darken_world_window(void);
 void validate_world_window(void);
 
 void change_gamma_level(short gamma_level);
@@ -270,7 +270,6 @@ float MainScreenPixelScale();
 bool MainScreenIsOpenGL();
 void MainScreenSwap();
 void MainScreenCenterMouse();
-SDL_Window* MainScreenWindow();
 SDL_Surface *MainScreenSurface();
 void MainScreenUpdateRect(int x, int y, int w, int h);
 void MainScreenUpdateRects(size_t count, const SDL_Rect *rects);

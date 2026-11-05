@@ -127,10 +127,6 @@ Feb 8, 2003 (Woody Zenfell):
 #include "ephemera.h"
 #include "interpolated_world.h"
 
-#include "Plugins.h"
-#include "SoundsPatch.h"
-#include "shell_options.h"
-
 /* ---------- constants */
 
 /* ---------- globals */
@@ -301,13 +297,11 @@ exit_predictive_mode()
 				// than []-scrolling did before prediction.  :)
 				int16 saved_interface_flags = player->interface_flags;
 				int16 saved_interface_decay = player->interface_decay;
-				bool is_net_oos = player->net_oos;
 				
 				*player = sSavedPlayerData[i];
 
 				player->interface_flags = saved_interface_flags;
 				player->interface_decay = saved_interface_decay;
-				player->net_oos = player->net_oos || is_net_oos; //can be set during the predictive mode
 			}
 
 			if(sSavedPlayerData[i].monster_index != NONE)
@@ -650,13 +644,11 @@ void leaving_map(
 	// Hackish. Should probably be in stop_all_sounds(), but that just
 	// doesn't work out. 
 	Music::instance()->StopLevelMusic();
-	Music::instance()->Pause();
 	SoundManager::instance()->StopAllSounds();
 }
 
 extern bool first_frame_rendered;
 extern float last_heartbeat_fraction;
-extern bool is_network_pregame;
 
 /* call this function after the new level has been completely read into memory, after
 	player->location and player->facing have been updated, and as close to the end of
@@ -683,11 +675,6 @@ bool entering_map(bool restoring_saved)
 
 	load_collections(true, get_screen_mode()->acceleration != _no_acceleration);
 
-	sounds_patches.clear();
-	Plugins::instance()->load_sounds_patches();
-
-	load_sounds_patch_data();
-	
 	load_all_monster_sounds();
 	load_all_game_sounds(static_world->environment_code);
 
@@ -722,7 +709,6 @@ bool entering_map(bool restoring_saved)
 	
 	if (!success) leaving_map();
 
-	is_network_pregame = game_is_networked;
 	first_frame_rendered = false;
 	last_heartbeat_fraction = -1.f;
 
@@ -789,7 +775,7 @@ void changed_polygon(
 		case _polygon_must_be_explored:
 			/* When a player enters a must be explored, it now becomes a normal polygon, to allow */
 			/*  for must be explored flags to work across cooperative net games */
-			if (player && !shell_options.editor)
+			if(player)
 			{
 				new_polygon->type= _polygon_is_normal;
 			}
@@ -800,23 +786,9 @@ void changed_polygon(
 	}
 }
 
-// Lua scripts can now override completion state
-short calculate_level_completion_state()
-{
-	short completion_state;
-	if (L_Calculate_Completion_State(completion_state))
-	{
-		return completion_state;
-	}
-	else
-	{
-		return calculate_classic_level_completion_state();
-	}
-}
-
 /* _level_failed is the same as _level_finished but indicates a non-fatal failure condition (e.g.,
 	too many civilians died during _mission_rescue) */
-short calculate_classic_level_completion_state(
+short calculate_level_completion_state(
 	void)
 {
 	short completion_state= _level_finished;
@@ -939,7 +911,7 @@ void cause_polygon_damage(
 		damage.random= 0;
 		damage.scale= FIXED_ONE;
 		
-		damage_monster(monster_index, NONE, NONE, NULL, &damage, NONE);
+		damage_monster(monster_index, NONE, NONE, (world_point3d *) NULL, &damage, NONE);
 	}
 }
 

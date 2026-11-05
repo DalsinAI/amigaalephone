@@ -30,7 +30,41 @@
 #include <thread>
 #include "Logging.h"
 
-static const auto epoch = std::chrono::steady_clock::now();
+#ifdef __amigaos__
+// SDL's millisecond timer (timer.device) in place of std::chrono's clock,
+// which libnix keeps in DateStamp's 1/50 s steps, and SDL_Delay in place
+// of std::this_thread, which would take libstdc++'s std::thread (and the
+// POSIX threads libnix hasn't) into the program
+
+uint32 machine_tick_count(void)
+{
+	static const Uint32 epoch_ticks = SDL_GetTicks(); // the first call's time
+	return SDL_GetTicks() - epoch_ticks;
+}
+
+void sleep_for_machine_ticks(uint32 ticks)
+{
+	SDL_Delay(ticks);
+}
+
+void sleep_until_machine_tick_count(uint32 ticks)
+{
+	uint32 now = machine_tick_count();
+	if (ticks > now)
+		SDL_Delay(ticks - now);
+}
+
+void yield(void)
+{
+	SDL_Delay(1);
+}
+
+#else
+
+/* by using static variable initialization time as the epoch, we ensure that
+   Aleph One can run for ~49 days without timing issues cropping up */
+/* TODO: Every single place machine tick counts are used, switch to uint64 */
+static auto epoch = std::chrono::high_resolution_clock::now();
 
 /* a knob to play the game in "slow motion" to debug timing sensitive features.
    this is not a preferences option because of the cheating potential, and
@@ -41,10 +75,15 @@ static constexpr int TIME_SKEW = 1;
  *  Return tick counter
  */
 
-uint64_t machine_tick_count(void)
+uint32 machine_tick_count(void)
 {
-	const auto now = std::chrono::steady_clock::now();
-	return std::chrono::duration_cast<std::chrono::milliseconds>(now - epoch).count() / TIME_SKEW;
+  auto now = std::chrono::high_resolution_clock::now();
+  if(now < epoch) {
+    logWarning("Time went backwards!");
+    epoch = now;
+  }
+  return std::chrono::duration_cast<std::chrono::milliseconds>
+    (now - epoch).count()/TIME_SKEW;
 }
 
 /*
@@ -60,9 +99,9 @@ void sleep_for_machine_ticks(uint32 ticks)
  *  Delay until a certain tick count
  */
 
-void sleep_until_machine_tick_count(uint64_t ticks)
+void sleep_until_machine_tick_count(uint32 ticks)
 {
-	std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::milliseconds(ticks*TIME_SKEW)));
+	std::this_thread::sleep_until(std::chrono::high_resolution_clock::time_point(std::chrono::milliseconds(ticks*TIME_SKEW)));
 }
 
 /*
@@ -73,13 +112,15 @@ void yield(void)
 	std::this_thread::yield();
 }
 
+#endif // __amigaos__
+
 /*
  *  Wait for mouse click or keypress
  */
 
 bool wait_for_click_or_keypress(uint32 ticks)
 {
-	auto start = machine_tick_count();
+	uint32 start = machine_tick_count();
 	SDL_Event event;
 	while (machine_tick_count() - start < ticks) {
 		SDL_WaitEventTimeout(&event, ticks);
