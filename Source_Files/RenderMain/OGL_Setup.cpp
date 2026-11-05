@@ -140,7 +140,7 @@ bool OGL_CheckExtension(const std::string extension) {
 static int ogl_progress;
 static int total_ogl_progress;
 static bool show_ogl_progress = false;
-static uint64_t last_update_tick;
+static int32 last_update_tick;
 
 extern bool OGL_ClearScreen();
 
@@ -163,7 +163,7 @@ void OGL_ProgressCallback(int delta_progress)
 	if (!show_ogl_progress) return;
 	ogl_progress += delta_progress;
 	{
-		uint64_t current_ticks = machine_tick_count();
+		int32 current_ticks = machine_tick_count();
 		if (current_ticks > last_update_tick + 33)
 		{
 			if (OGL_LoadScreen::instance()->Use())
@@ -188,8 +188,8 @@ void OGL_StopProgress()
 // Sensible defaults for the fog:
 static OGL_FogData FogData[OGL_NUMBER_OF_FOG_TYPES] = 
 {
-	{{0x8000,0x8000,0x8000},8,0,false,true,OGL_Fog_Exp,1},
-	{{0x8000,0x8000,0x8000},8,0,false,true,OGL_Fog_Exp,1}
+	{{0x8000,0x8000,0x8000},8,false,true},
+	{{0x8000,0x8000,0x8000},8,false,true}
 };
 
 
@@ -250,10 +250,10 @@ void OGL_SetDefaults(OGL_ConfigureData& Data)
 		for (int ie=0; ie<2; ie++)
 			Data.LscpColors[il][ie] = DefaultLscpColors[il][ie];
 
+	Data.GeForceFix = false;
 	Data.WaitForVSync = true;
 	Data.Use_sRGB = false;
-
-	Data.BillboardXY = false;
+	Data.Use_NPOT = false;
 }
 
 
@@ -289,6 +289,11 @@ void OGL_TextureOptionsBase::Load()
 		flags |= ImageLoader_CanUseDXTC;
 	}
 
+	if (Get_OGL_ConfigureData().GeForceFix)
+	{
+		flags |= ImageLoader_LoadDXTC1AsDXTC3;
+	}
+	
 	// Load the normal image with alpha channel
 
 	// Check to see if loading needs to be done;
@@ -312,7 +317,7 @@ void OGL_TextureOptionsBase::Load()
 	}
 
 	// load a heightmap
-	if (TEST_FLAG(Get_OGL_ConfigureData().Flags, OGL_Flag_BumpMap) && OffsetMap != FileSpecifier() && OffsetMap.Exists()) {
+	if(OffsetMap != FileSpecifier() && OffsetMap.Exists()) {
 		if(!OffsetImg.LoadFromFile(OffsetMap, ImageLoader_Colors, flags | (NormalIsPremultiplied ? ImageLoader_ImageIsAlreadyPremultiplied : 0), actual_width, actual_height, maxTextureSize)) {
 			return;
 		}
@@ -424,7 +429,8 @@ void OGL_LoadModelsImages(short Collection)
 	OGL_LoadTextures(Collection);
 	
 	// For models, skins
-	if (TEST_FLAG(Get_OGL_ConfigureData().Flags, OGL_Flag_3D_Models))
+	bool UseModels = TEST_FLAG(Get_OGL_ConfigureData().Flags,OGL_Flag_3D_Models) ? true : false;
+	if (UseModels)
 		OGL_LoadModels(Collection);
 	else
 		OGL_UnloadModels(Collection);
@@ -465,10 +471,11 @@ OGL_FogData *OriginalFogData = NULL;
 
 void reset_mml_opengl()
 {
-#ifdef HAVE_OPENGL
+#ifdef HAVE_OPENGL // these three are in OpenGL-only files
 	reset_mml_opengl_texture();
 	reset_mml_opengl_model();
 	reset_mml_opengl_shader();
+#endif
 	
 	if (OriginalFogData) {
 		for (unsigned i = 0; i < OGL_NUMBER_OF_FOG_TYPES; i++)
@@ -476,12 +483,10 @@ void reset_mml_opengl()
 		free(OriginalFogData);
 		OriginalFogData = NULL;
 	}
-#endif
 }
 
 void parse_mml_opengl(const InfoTree& root)
 {
-#ifdef HAVE_OPENGL
 	// back up old values first
 	if (!OriginalFogData) {
 		OriginalFogData = (OGL_FogData *) malloc(sizeof(OGL_FogData) * OGL_NUMBER_OF_FOG_TYPES);
@@ -490,6 +495,7 @@ void parse_mml_opengl(const InfoTree& root)
 			OriginalFogData[i] = FogData[i];
 	}
 
+#ifdef HAVE_OPENGL // without OpenGL, only the fog is kept
 	// texture options / clear, in order
 	for (const InfoTree::value_type &v : root)
 	{
@@ -512,6 +518,7 @@ void parse_mml_opengl(const InfoTree& root)
 	{
 		parse_mml_opengl_shader(shader);
 	}
+#endif
 	
 	for (const InfoTree &fog : root.children_named("fog"))
 	{
@@ -521,17 +528,13 @@ void parse_mml_opengl(const InfoTree& root)
 		
 		fog.read_attr("on", def.IsPresent);
 		fog.read_attr("depth", def.Depth);
-		fog.read_attr("start", def.Start);
 		fog.read_attr("landscapes", def.AffectsLandscapes);
-		fog.read_attr("mode", def.Mode);
-		fog.read_attr("landscape_mix", def.LandscapeMix);
 		
 		for (const InfoTree &color : fog.children_named("color"))
 		{
 			color.read_color(def.Color);
 		}
 	}
-#endif
 }
 
 #ifdef HAVE_OPENGL

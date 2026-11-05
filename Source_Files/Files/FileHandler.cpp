@@ -44,7 +44,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <string>
-#include <sstream>
 #include <vector>
 #include <functional>
 #include <map>
@@ -58,6 +57,7 @@
 #endif
 
 #ifdef HAVE_ZZIP
+#include <zzip/lib.h>
 #include "SDL_rwops_zzip.h"
 #endif
 
@@ -82,7 +82,6 @@
 
 #ifdef HAVE_NFD
 #include "nfd.h"
-#include <SDL2/SDL_syswm.h>
 #endif
 
 namespace io = boost::iostreams;
@@ -387,7 +386,7 @@ bool FileSpecifier::Create(Typecode Type)
 }
 
 // Create directory
-bool FileSpecifier::MakeDirectory()
+bool FileSpecifier::CreateDirectory()
 {
 	sys::error_code ec;
 	const bool created_dir = fs::create_directory(utf8_to_path(name), ec);
@@ -596,8 +595,6 @@ static extension_mapping extensions[] =
 
 	{ "mpg", false, _typecode_movie },
 
-	{ "appl", false, _typecode_application },
-
 	{0, false, _typecode_unknown}
 };
 
@@ -687,6 +684,16 @@ not_shapes: ;
 
 	// Not identified
 	return _typecode_unknown;
+}
+
+// Get free space on disk
+bool FileSpecifier::GetFreeSpace(uint32 &FreeSpace)
+{
+	// This is impossible to do in a platform-independant way, so we
+	// just return 16MB which should be enough for everything
+	FreeSpace = 16 * 1024 * 1024;
+	err = 0;
+	return true;
 }
 
 // Delete file
@@ -807,13 +814,17 @@ void FileSpecifier::SetTempName(const FileSpecifier& other)
 }
 
 // Get last element of path
-std::string FileSpecifier::GetName() const
+void FileSpecifier::GetName(char *part) const
 {
+#ifdef __amigaos__
+	string::size_type pos = name.find_last_of("/:"); // "Vol:name" too
+#else
 	string::size_type pos = name.rfind(PATH_SEP);
+#endif
 	if (pos == string::npos)
-		return name;
+		strcpy(part, name.c_str());
 	else
-		return name.substr(pos + 1);
+		strcpy(part, name.substr(pos + 1).c_str());
 }
 
 // Add part to path name
@@ -821,6 +832,10 @@ void FileSpecifier::AddPart(const string &part)
 {
 	if (name.length() && name[name.length() - 1] == PATH_SEP)
 		name += local_path_separators(part.c_str());
+#ifdef __amigaos__
+	else if (name.length() && name[name.length() - 1] == ':')
+		name += part; // "PROGDIR:" + "x"; "PROGDIR:/x" would be the parent
+#endif
 	else
 		name = name + PATH_SEP + local_path_separators(part.c_str());
 
@@ -831,6 +846,15 @@ void FileSpecifier::AddPart(const string &part)
 void FileSpecifier::SplitPath(string &base, string &part) const
 {
 	string::size_type pos = name.rfind(PATH_SEP);
+#ifdef __amigaos__
+	// "Vol:x/y" splits at the '/'; "Vol:y" into "Vol:" and "y"
+	string::size_type colon = name.rfind(':');
+	if (colon != string::npos && (pos == string::npos || pos < colon)) {
+		base = name.substr(0, colon + 1);
+		part = name.substr(colon + 1);
+		return;
+	}
+#endif
 	if (pos == string::npos) {
 		base = name;
 		part.erase();
@@ -859,9 +883,10 @@ void FileSpecifier::FromDirectory(DirectorySpecifier &Dir)
 // Canonicalize path
 void FileSpecifier::canonicalize_path(void)
 {
-#if !defined(__WIN32__)
+#if !defined(__WIN32__) && !defined(__amigaos__)
 
 	// Replace multiple consecutive '/'s by a single '/'
+	// (not on AmigaDOS, where "//" is the parent's parent)
 	while (true) {
 		string::size_type pos = name.find("//");
 		if (pos == string::npos)
@@ -1166,7 +1191,8 @@ protected:
 		m_list_w->sort_by(default_order);
 		m_list_w->set_directory_changed_callback(std::bind(&FileDialog::on_directory_changed, this));
 
-		m_directory_name_w = new w_static_text(dir.GetName().c_str());
+		dir.GetName(temporary);
+		m_directory_name_w = new w_static_text(temporary);
 	}
 
 	dialog m_dialog;
@@ -1180,7 +1206,8 @@ private:
 
 
 	void on_directory_changed() {
-		m_directory_name_w->set_text(m_list_w->get_file().GetName().c_str());
+		m_list_w->get_file().GetName(temporary);
+		m_directory_name_w->set_text(temporary);
 
 		m_up_button_w->set_enabled(m_list_w->can_move_up_a_level());
 
@@ -1301,93 +1328,18 @@ private:
 	std::string m_filename;
 };
 
-#ifdef HAVE_NFD
-static std::map<Typecode, std::vector<nfdu8filteritem_t>> typecode_filters {
-	{_typecode_scenario, { {"Map file", "sceA"} }},
-	{_typecode_savegame, { {"Saved game file", "sgaA"} }},
-	{_typecode_film,     { {"Recording file", "filA"} }},
-	{_typecode_physics,  { {"Physics file", "phyA"} }},
-	{_typecode_shapes,   { {"Shapes file", "shpA"} }},
-	{_typecode_sounds,   { {"Sounds file", "sndA"} }},
-	{_typecode_patch,    { {"Patch file", "ShPa"} }},
-	{_typecode_images,   { {"Images file", "imgA"} }},
-	{_typecode_music,    { {"Music file", "aif,ogg,wav"} }},
-	{_typecode_movie,    { {"Video file", "webm"} }} 
+static std::map<Typecode, const char*> typecode_filters {
+    {_typecode_scenario, "sceA"},
+    {_typecode_savegame, "sgaA"},
+    {_typecode_film, "filA"},
+    {_typecode_physics, "phyA"},
+    {_typecode_shapes, "shpA"},
+    {_typecode_sounds, "sndA"},
+    {_typecode_patch, "ShPa"},
+    {_typecode_images, "imgA"},
+    {_typecode_music, "aif;wav;ogg"},
+    {_typecode_movie, "webm"}
 };
-
-// from nativefiledialog-extended nfd_sdl2.h
-// we copied it because nfd_sdl2.h is including SDL2 headers directly and we would have to adjust the include paths
-static bool GetNativeWindowFromSDLWindowForNFD(SDL_Window* sdlWindow, nfdwindowhandle_t* nativeWindow)
-{
-	SDL_SysWMinfo info;
-	SDL_VERSION(&info.version);
-	if (!SDL_GetWindowWMInfo(sdlWindow, &info)) {
-		return false;
-	}
-	switch (info.subsystem) {
-#if defined(SDL_VIDEO_DRIVER_WINDOWS)
-	case SDL_SYSWM_WINDOWS:
-		nativeWindow->type = NFD_WINDOW_HANDLE_TYPE_WINDOWS;
-		nativeWindow->handle = (void*)info.info.win.window;
-		return true;
-#endif
-#if defined(SDL_VIDEO_DRIVER_COCOA)
-	case SDL_SYSWM_COCOA:
-		nativeWindow->type = NFD_WINDOW_HANDLE_TYPE_COCOA;
-		nativeWindow->handle = (void*)info.info.cocoa.window;
-		return true;
-#endif
-#if defined(SDL_VIDEO_DRIVER_X11)
-	case SDL_SYSWM_X11:
-		nativeWindow->type = NFD_WINDOW_HANDLE_TYPE_X11;
-		nativeWindow->handle = (void*)info.info.x11.window;
-		return true;
-#endif
-	default:
-		return false;
-	}
-}
-#endif
-
-bool FileSpecifier::ReadDirectoryDialog() //needs native file dialog to work
-{
-#ifdef HAVE_NFD
-#if defined(_WIN32)
-	auto fullscreen = get_screen_mode()->fullscreen;
-	if (fullscreen)
-	{
-		toggle_fullscreen(false);
-	}
-#endif
-	nfdchar_t* outpath;
-	nfdpickfolderu8args_t params = {};
-	if (GetNativeWindowFromSDLWindowForNFD(MainScreenWindow(), &params.parentWindow))
-	{
-		// we ignore the "window focus lost + gained" events to prevent pausing the game on "focus lost"
-		// otherwise, a user input would be necessary to resume the game
-		SDL_EventState(SDL_WINDOWEVENT, SDL_DISABLE);
-	}
-
-	auto result = NFD_PickFolderU8_With(&outpath, &params);
-	SDL_EventState(SDL_WINDOWEVENT, SDL_ENABLE);
-#if defined(_WIN32)
-	if (fullscreen)
-	{
-		toggle_fullscreen(true);
-	}
-#endif
-
-	if (result == NFD_OKAY)
-	{
-		name = outpath;
-		NFD_FreePathU8(outpath);
-		return true;
-	}
-	
-#endif
-	return false;
-}
-
 
 bool FileSpecifier::ReadDialog(Typecode type, const char *prompt)
 {
@@ -1433,9 +1385,9 @@ bool FileSpecifier::ReadDialog(Typecode type, const char *prompt)
 		// NFD doesn't append a wildcard filter on mac, so if you set ANY
 		// filter here, anything without that extension gets grayed out. So, I
 		// guess just accept any files
-		std::vector<nfdu8filteritem_t> filters = {};
+		const char* filters = nullptr;
 #else
-		auto& filters = typecode_filters[type];
+		auto filters = typecode_filters[type];
 #endif
 
 		nfdchar_t* outpath;
@@ -1445,17 +1397,8 @@ bool FileSpecifier::ReadDialog(Typecode type, const char *prompt)
 		{
 			toggle_fullscreen(false);
 		}
-#endif
-		nfdopendialogu8args_t params = { filters.data(), static_cast<nfdfiltersize_t>(filters.size()), dir.GetPath() };
-		if (GetNativeWindowFromSDLWindowForNFD(MainScreenWindow(), &params.parentWindow))
-		{
-			// we ignore the "window focus lost + gained" events to prevent pausing the game on "focus lost"
-			// otherwise, a user input would be necessary to resume the game
-			SDL_EventState(SDL_WINDOWEVENT, SDL_DISABLE);
-		}
-
-		auto result = NFD_OpenDialogU8_With(&outpath, &params);
-		SDL_EventState(SDL_WINDOWEVENT, SDL_ENABLE);
+#endif		
+		auto result = NFD_OpenDialog(filters, dir.GetPath(), &outpath);
 #if defined(_WIN32)
 		if (fullscreen)
 		{
@@ -1465,7 +1408,7 @@ bool FileSpecifier::ReadDialog(Typecode type, const char *prompt)
 		if (result == NFD_OKAY)
 		{
 			name = outpath;
-			NFD_FreePathU8(outpath);
+			free(outpath);
 			return true;
 		}
 		else
@@ -1707,16 +1650,7 @@ bool FileSpecifier::WriteDialog(Typecode type, const char *prompt, const char *d
 			toggle_fullscreen(false);
 		}
 #endif
-		nfdsavedialogu8args_t params = { typecode_filters[type].data(), static_cast<nfdfiltersize_t>(typecode_filters[type].size()), dir.GetPath(), default_name };
-		if (GetNativeWindowFromSDLWindowForNFD(MainScreenWindow(), &params.parentWindow))
-		{
-			// we ignore the "window focus lost + gained" events to prevent pausing the game on "focus lost"
-			// otherwise, a user input would be necessary to resume the game
-			SDL_EventState(SDL_WINDOWEVENT, SDL_DISABLE);
-		}
-
-		auto result = NFD_SaveDialogU8_With(&outpath, &params);
-		SDL_EventState(SDL_WINDOWEVENT, SDL_ENABLE);
+		auto result = NFD_SaveDialog(typecode_filters[type], dir.GetPath(), &outpath);
 #if defined(_WIN32)
 		if (fullscreen)
 		{
@@ -1726,7 +1660,7 @@ bool FileSpecifier::WriteDialog(Typecode type, const char *prompt, const char *d
 		if (result == NFD_OKAY)
 		{
 			name = outpath;
-			NFD_FreePathU8(outpath);
+			free(outpath);
 			return true;
 		}
 		else
@@ -1776,13 +1710,15 @@ static bool confirm_save_choice(FileSpecifier & file)
 		return true;
 
 	// Construct message
-	std::ostringstream oss;
-	oss << "'" << FileSpecifier::HideExtension(file.GetName()) << "' alredy exists.";
+	char name[256];
+	file.GetName(name);
+	char message[512];
+	sprintf(message, "'%s' already exists.", FileSpecifier::HideExtension(std::string(name)).c_str());
 
 	// Create dialog
 	dialog d;
 	vertical_placer *placer = new vertical_placer;
-	placer->dual_add(new w_static_text(oss.str().c_str()), d);
+	placer->dual_add(new w_static_text(message), d);
 	placer->dual_add(new w_static_text("Ok to overwrite?"), d);
 	placer->add(new w_spacer(), true);
 
@@ -1801,14 +1737,12 @@ static bool confirm_save_choice(FileSpecifier & file)
 	return d.run() == 0;
 }
 
-ScopedSearchPath::ScopedSearchPath(const DirectorySpecifier& dir) :
-	d{dir}
+ScopedSearchPath::ScopedSearchPath(const DirectorySpecifier& dir) 
 {
 	data_search_path.insert(data_search_path.begin(), dir);
 }
 
 ScopedSearchPath::~ScopedSearchPath() 
 {
-	assert(data_search_path.size() && data_search_path.front() == d);
 	data_search_path.erase(data_search_path.begin());
 }

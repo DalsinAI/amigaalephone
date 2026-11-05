@@ -197,17 +197,14 @@ class w_label : public w_static_text {
 	friend class dialog;
 	friend class w_slider;
 public:
-	w_label(const char *text) : w_static_text(text, LABEL_WIDGET), associated_widget(0), down(false) {}
+	w_label(const char *text) : w_static_text(text, LABEL_WIDGET), associated_widget(0) {}
 
 	void associate_widget(widget *w) { associated_widget = w; }
 	void draw(SDL_Surface *s) const;
 	void click(int, int);
-	void mouse_down(int, int);
-	void mouse_up(int, int);
 	bool is_selectable(void) const { if (associated_widget) return associated_widget->is_selectable(); else return false; }
 private:
 	widget *associated_widget;
-	bool down;
 };
 
 class w_title : public w_static_text {
@@ -323,8 +320,7 @@ public:
 
 	void draw(SDL_Surface *s) const;
 	void click(int x, int y);
-	void mouse_down(int x, int y);
-	void mouse_up(int x, int y);
+
 	void set_selection(const char *selection);
 	void set_callback(action_proc p, void* a) { proc = p; arg = a; }
 
@@ -337,7 +333,7 @@ private:
 	const char *selection;
 	action_proc proc;
 	void *arg;
-	bool down;
+
 	int16 selection_x;			// X offset of selection display
 	bool utf8; // render utf8 text instead of roman
 };
@@ -811,12 +807,9 @@ public:
 
 	void draw_item(vector<entry_point>::const_iterator i, SDL_Surface *s, int16 x, int16 y, uint16 width, bool selected) const;
 
-	void set_offset(int offset) { this->offset = offset; }
-
 private:
 	dialog *parent;
 	bool    show_level_numbers;
-	int offset;
 };
 
 
@@ -872,7 +865,9 @@ class w_file_chooser : public w_select_button
 {
 public:
 	w_file_chooser(const char* inDialogPrompt, Typecode inTypecode);
-	void proc();
+
+	void click(int x, int y);
+
 	void set_file(const FileSpecifier& inFile);
 	const FileSpecifier& get_file() { return file; }
 
@@ -887,26 +882,6 @@ private:
 	char		filename[256];
 	char		dialog_prompt[256];
 	Typecode	typecode;
-	ControlHitCallback m_callback;
-};
-
-class w_directory_chooser : public w_select_button
-{
-public:
-	w_directory_chooser();
-	void proc();
-	void set_directory(const FileSpecifier& inFile);
-	const FileSpecifier& get_directory() { return directory; }
-
-	// we also have void set_callback(action_proc, void*)
-	// as inherited from w_select_button
-	void set_callback(ControlHitCallback callback) { m_callback = callback; }
-
-private:
-	void update_directoryname();
-
-	FileSpecifier	directory;
-	char		directory_name[256];
 	ControlHitCallback m_callback;
 };
 

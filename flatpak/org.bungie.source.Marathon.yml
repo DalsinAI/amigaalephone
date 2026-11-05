@@ -1,6 +1,6 @@
 app-id: org.bungie.source.Marathon
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '22.08'
 sdk: org.freedesktop.Sdk
 command: run.sh
 modules:
@@ -8,10 +8,6 @@ modules:
   - shared/glu.yml
   - shared/zzip.yml
   - shared/miniupnpc.yml
-  - shared/asio.yml
-  - shared/ebml.yml
-  - shared/matroska.yml
-  - shared/libyuv.yml
   - shared/alephone.yml
   - name: game-data
     buildsystem: simple
@@ -36,4 +32,3 @@ finish-args:
   - --socket=pulseaudio
   - --share=network
   - --filesystem=home
-  - --filesystem=/tmp

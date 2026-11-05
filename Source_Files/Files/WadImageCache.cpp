@@ -23,13 +23,21 @@
 #include "cseries.h"
 #include "WadImageCache.h"
 
+#ifdef __amigaos__
+#include <random>
+#include <ctime>
+#else
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#endif
 #include "InfoTree.h"
 
 #ifdef HAVE_SDL_IMAGE
 #include <SDL2/SDL_image.h>
+#endif
+#ifdef HAVE_PNG
+#include "IMG_savepng.h"
 #endif
 
 #include "game_errors.h"
@@ -118,9 +126,19 @@ SDL_Surface *WadImageCache::resize_image(SDL_Surface *original, int width, int h
 std::string WadImageCache::image_to_new_name(SDL_Surface *image, int32 *filesize) const
 {
 	// create name
+#ifdef __amigaos__
+	// Boost's random_generator reads /dev/urandom, which AmigaOS hasn't:
+	// a name of 32 random hex digits is just as good for a cache file
+	static std::mt19937 rng((uint32)std::time(NULL) ^ (uint32)machine_tick_count());
+	static const char hex[] = "0123456789abcdef";
+	std::string ustr;
+	for (int i = 0; i < 32; i++)
+		ustr += hex[rng() & 15];
+#else
 	boost::uuids::random_generator gen;
 	boost::uuids::uuid u = gen();
 	std::string ustr = boost::uuids::to_string(u);
+#endif
 	
 	FileSpecifier File;
 	File.SetToImageCacheDir();
@@ -130,7 +148,9 @@ std::string WadImageCache::image_to_new_name(SDL_Surface *image, int32 *filesize
 	TempFile.SetTempName(File);
 	
 	int ret;
-#if defined (HAVE_SDL_IMAGE) && defined (HAVE_PNG)
+//#if defined(HAVE_PNG) && defined(HAVE_SDL_IMAGE)
+//	ret = aoIMG_SavePNG(TempFile.GetPath(), image, IMG_COMPRESS_DEFAULT, NULL, 0);
+#ifdef HAVE_SDL_IMAGE
 	ret = IMG_SavePNG(image, TempFile.GetPath());
 #else
 	ret = SDL_SaveBMP(image, TempFile.GetPath());
@@ -319,7 +339,7 @@ void WadImageCache::initialize_cache()
 	InfoTree pt;
 	try {
 		pt = InfoTree::load_ini(info);
-	} catch (const InfoTree::ini_error& e) {
+	} catch (InfoTree::ini_error e) {
 		logError("Could not read image cache from %s (%s)", info.GetPath(), e.what());
 	}
 	
@@ -380,7 +400,7 @@ void WadImageCache::save_cache()
 	try {
 		pt.save_ini(info);
 		m_cache_dirty = false;
-	} catch (const InfoTree::ini_error& e) {
+	} catch (InfoTree::ini_error e) {
 		logError("Could not save image cache to %s (%s)", info.GetPath(), e.what());
 		return;
 	}

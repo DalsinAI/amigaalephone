@@ -58,9 +58,6 @@ on very small maps, choose_random_flood_node() may not terminate
 #define NODE_IS_UNEXPANDED(n) (!NODE_IS_EXPANDED(n))
 #define MARK_NODE_AS_EXPANDED(n) ((n)->flags|=(uint16)0x8000)
 
-namespace alephone {
-namespace flood_map {
-
 struct node_data /* 16 bytes */
 {
 	uint16 flags;
@@ -73,11 +70,6 @@ struct node_data /* 16 bytes */
 
 	int32 user_flags;
 };
-
-}
-}
-
-using namespace alephone::flood_map;
 
 /* ---------- globals */
 
@@ -99,6 +91,7 @@ void allocate_flood_map_memory(
 	nodes= new node_data[MAXIMUM_FLOOD_NODES];
 	if (visited_polygons) delete []visited_polygons;
 	visited_polygons= new short[MAXIMUM_POLYGONS_PER_MAP];
+	assert(nodes&&visited_polygons);
 }
 
 /* returns next polygon index or NONE if there are no more polygons left cheaper than maximum_cost */
@@ -252,7 +245,7 @@ short flood_depth(
 /* when looking for a random path, always choose a random node.  if bias is not NULL, then try
 	and choose a destination in that direction */
 void choose_random_flood_node(
-	const world_vector2d *bias)
+	world_vector2d *bias)
 {
 	world_point2d origin;
 	

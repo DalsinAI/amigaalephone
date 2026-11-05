@@ -29,16 +29,9 @@
  */
 
 #include    "preferences_widgets_sdl.h"
-
-#include <cstring>
-#include <optional>
-
 #include "Crosshairs.h"
 
 #include "preferences.h"
-#ifdef HAVE_STEAM
-#include "steamshim_child.h"
-#endif
 
 extern bool use_lua_hud_crosshairs;
 
@@ -51,112 +44,24 @@ void w_env_select::select_item_callback(void* arg) {
     obj->select_item(obj->parent);
 }
 
-#ifdef HAVE_STEAM
-extern std::vector<item_subscribed_query_result::item> subscribed_workshop_items;
-
-static void add_workshop_items(std::vector<env_item>& items, Typecode type,
-							   ItemType item_type,
-							   std::optional<ContentType> content_type,
-							   const std::string& header)
-{
-	std::vector<FileSpecifier> files;
-	FindAllFiles finder(files);
-	
-	for (const auto& item : subscribed_workshop_items)
-	{
-		if (item.item_type == item_type &&
-			(!content_type.has_value() ||
-			 item.content_type == content_type.value() ||
-			 item.content_type == ContentType::SoloAndNet))
-		{
-			FileSpecifier dir = item.install_folder_path;
-			finder.Find(dir, type);
-		}
-	}
-
-	if (files.size() == 0)
-	{
-		return;
-	}
-
-	env_item title;
-	strcpy(title.name, header.c_str());
-	items.push_back(title);
-
-	std::sort(files.begin(), files.end(), [](const FileSpecifier& a, const FileSpecifier& b) {
-		std::string tmp, a_name, b_name;
-		a.SplitPath(tmp, a_name);
-		b.SplitPath(tmp, b_name);
-
-		return std::lexicographical_compare(a_name.begin(),
-											a_name.end(),
-											b_name.begin(),
-											b_name.end(),
-											[](const char& a, const char& b) {
-												return tolower(a) < tolower(b);
-											});
-	});
-
-	for (auto& file : files)
-	{
-		items.push_back(env_item(file, 1, true));
-	}
-}
-
-static void add_workshop_items(std::vector<env_item>& items, Typecode type, bool prefer_net)
-{
-	static const char* solo = "Steam Workshop (Solo)";
-	static const char* net = "Steam Workshop (Net)";
-	static const char* both = "Steam Workshop";
-	switch (type)
-	{
-		case _typecode_scenario:
-			if (prefer_net)
-			{
-				add_workshop_items(items, type, ItemType::Map, ContentType::Net, net);
-				add_workshop_items(items, type, ItemType::Map, ContentType::Solo, solo);
-			}
-			else
-			{
-				add_workshop_items(items, type, ItemType::Map, ContentType::Solo, solo);
-				add_workshop_items(items, type, ItemType::Map, ContentType::Net, net);
-			}
-			break;
-		case _typecode_physics:
-			add_workshop_items(items, type, ItemType::Physics, std::nullopt, both);
-			break;
-		case _typecode_netscript:
-			if (prefer_net)
-			{
-				add_workshop_items(items, type, ItemType::Script, ContentType::Net, net);
-				add_workshop_items(items, type, ItemType::Script, ContentType::Solo, solo);
-			}
-			else
-			{
-				add_workshop_items(items, type, ItemType::Script, ContentType::Solo, solo);
-				add_workshop_items(items, type, ItemType::Script, ContentType::Net, net);				
-			}
-			break;
-		case _typecode_sounds:
-			add_workshop_items(items, type, ItemType::Sounds, std::nullopt, both);
-			break;
-		case _typecode_shapes:
-			add_workshop_items(items, type, ItemType::Shapes, std::nullopt, both);
-			break;
-		default:
-			break;
-	}
-}
-#endif
-
 void w_env_select::select_item(dialog *parent)
 {
-	vector<env_item> items;
-
-#ifdef HAVE_STEAM
-	add_workshop_items(items, type, prefer_net);
-#endif	
-
+#ifdef HAVE_NFD
+	if (environment_preferences->use_native_file_dialogs)
+	{
+		auto spec = item;
+        if (spec.ReadDialog(type, nullptr))
+		{
+			set_path(spec.GetPath());
+			if (mCallback)
+			{
+				mCallback(this);
+			}
+		}
+	}
+	else
+	{
+#endif
 	// Find available files
 	vector<FileSpecifier> files;
 	if (type != _typecode_theme) {
@@ -172,6 +77,7 @@ void w_env_select::select_item(dialog *parent)
 	}
 
 	// Create structured list of files
+	vector<env_item> items;
 	vector<FileSpecifier>::const_iterator i = files.begin(), end = files.end();
 	string last_base;
 	int indent_level = 0;
@@ -199,15 +105,7 @@ void w_env_select::select_item(dialog *parent)
 	w_env_list *list_w = new w_env_list(items, item.GetPath(), &d);
 	placer->dual_add(list_w, d);
 	placer->add(new w_spacer(), true);
-
-	auto load_other = false;
-	horizontal_placer* button_placer = new horizontal_placer;
-#ifndef MAC_APP_STORE
-	w_button* other_w = new w_button("LOAD OTHER", [&](void* p) { load_other = true; dialog_cancel(p); }, &d);
-	button_placer->dual_add(other_w, d);
-#endif
-	button_placer->dual_add(new w_button("CANCEL", dialog_cancel, &d), d);
-	placer->add(button_placer, true);
+	placer->dual_add(new w_button("CANCEL", dialog_cancel, &d), d);
 
 	d.activate_widget(list_w);
 	d.set_widget_placer(placer);
@@ -223,19 +121,9 @@ void w_env_select::select_item(dialog *parent)
         if(mCallback)
             mCallback(this);
 	}
-	else if (load_other)
-	{
-		FileSpecifier spec(get_path());
-		if (spec.ReadDialog(type))
-		{
-			set_path(spec.GetPath());
-			
-			if (mCallback)
-			{
-				mCallback(this);
-			}
-		}
+#ifdef HAVE_NFD
 	}
+#endif
 }
 
 w_crosshair_display::w_crosshair_display() : surface(0)
@@ -361,10 +249,6 @@ void w_plugins::draw_item(Plugins::iterator it, SDL_Surface* s, int16 x, int16 y
 	}
 	if (it->stats_lua.size()) {
 		types += ", Stats";
-	}
-	if (it->map_patches.size())
-	{
-		types += ", Map Patch";
 	}
 	types.erase(0, 2);
 	right_text_width = text_width(types.c_str(), font, style | styleItalic);

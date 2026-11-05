@@ -28,20 +28,30 @@
 #if !defined(DISABLE_NETWORKING)
 
 #include "CommunicationsChannel.h"
+
 #include "AStream.h"
 #include "MessageInflater.h"
 #include "MessageHandler.h"
-#include "network.h"
+
 #include <stdlib.h>
 #include <iostream> // debugging
 #include <cerrno>
 #include "cseries.h"
+#if defined(WIN32)
+#define WIN32_LEAN_AND_MEAN
+#if defined (_MSC_VER)
+#define NOMINMAX
+#endif
+#include <winsock2.h> // hacky non-cross-platform setting of nonblocking
+#else
+#include <fcntl.h> // hacky non-cross-platform setting of nonblocking
+#endif
 #include <algorithm>
 
 enum
 {
 	// If any incoming message claims to be longer than this, we bail
-	kMaximumMessageLength = 10 * 1024 * 1024,
+	kMaximumMessageLength = 4 * 1024 * 1024,
 
 	// Milliseconds we wait between pump() calls during receive[Specific]Message()
 	kSSRPumpInterval = 50,
@@ -50,9 +60,12 @@ enum
 	kFlushPumpInterval = kSSRPumpInterval,
 };
 
+// if you really want to read what this does, scroll down
+static void MakeTCPsocketNonBlocking(TCPsocket *socket); 
+
 CommunicationsChannel::CommunicationsChannel()
 	: mConnected(false),
-	mSocket(nullptr),
+	mSocket(NULL),
 	mMessageInflater(NULL),
 	mMessageHandler(NULL),
 	mMemento(NULL),
@@ -68,9 +81,9 @@ CommunicationsChannel::CommunicationsChannel()
 
 
 
-CommunicationsChannel::CommunicationsChannel(std::unique_ptr<TCPsocket> inSocket)
+CommunicationsChannel::CommunicationsChannel(TCPsocket inSocket)
 	: mConnected(inSocket != NULL),
-	mSocket(std::move(inSocket)),
+	mSocket(inSocket),
 	mMessageInflater(NULL),
 	mMessageHandler(NULL),
 	mMemento(NULL),
@@ -94,22 +107,80 @@ CommunicationsChannel::~CommunicationsChannel()
 
 
 CommunicationsChannel::CommunicationResult
-CommunicationsChannel::receive_some(byte* inBuffer, size_t& ioBufferPosition, size_t inBufferLength)
+CommunicationsChannel::receive_some(TCPsocket inSocket, byte* inBuffer, size_t& ioBufferPosition, size_t inBufferLength)
 {
+//  	std::cout << "Want to receive " << inBufferLength << " bytes; buffer position " << ioBufferPosition << std::endl;
+
 	if (inBufferLength == 0) return kComplete;
 
 	size_t theBytesLeft = inBufferLength - ioBufferPosition;
 
 	if(theBytesLeft > 0)
 	{
-		int theResult = mSocket->receive(inBuffer + ioBufferPosition, theBytesLeft);
+		int theResult = SDLNet_TCP_Recv(inSocket, inBuffer + ioBufferPosition, theBytesLeft);
 
+//				std::cout << "  theResult is " << theResult << std::endl;
+
+// Unfortunately, SDLNet_TCP_Recv() often returns -1 even when there's no error, and I
+// don't think I have any legitimate way to distinguish this case from a true error condition.
+#ifdef SANE_RECV_RESULTS
 		if(theResult < 0)
 		{
 			disconnect();
 			return kError;
 		}
+		else
+		{
+			if(theResult > 0)
+			{
+				mTicksAtLastReceive = machine_tick_count();
+			}
+	
+			ioBufferPosition += theResult;
+			return (ioBufferPosition == inBufferLength) ? kComplete : kIncomplete;
+		}
+	}
+#else
+		if(theResult == 0)
+		{
+			// For some reason we get 0 back if the connection is lost ...
+			disconnect();
+			return kError;
+		}
 		
+		if(theResult < 0)
+		{
+			// Please close your eyes for this part ... we get -1 back from SDL_net,
+			// then peek around behind its back to try to figure out why.  YUCK
+			// Hmm surely this is doomed to fail on non-UNIXy systems?  sigh ...
+			// Perhaps we should treat 0 and < 0 the same here, and change what it
+			// means to be connected.  Maybe we could use the Get Peer function to
+			// detect connected/disconnected.
+
+		  // grsmith: we could do that, or we could add another 
+		  // platform-specific hack
+#ifdef WIN32
+		  if (WSAGetLastError() == WSAEWOULDBLOCK) {
+		    theResult = 0;
+		  } else {
+		    std::cout << "theResult == " << theResult << std::endl;
+		    disconnect();
+		    return kError;
+		  }
+#else
+			if(errno == EAGAIN)
+			{
+				theResult = 0;
+			}
+			else
+			{
+				std::cout << "theResult == " << theResult << " ; errno == " << errno << " ; strerror() == " << strerror(errno) << " ; SDL_GetError() == " << SDL_GetError() << std::endl;
+				
+				disconnect();
+				return kError;
+			}
+#endif
+		}
 		if(theResult > 0)
 		{
 			mTicksAtLastReceive = machine_tick_count();
@@ -119,16 +190,21 @@ CommunicationsChannel::receive_some(byte* inBuffer, size_t& ioBufferPosition, si
 	} // if we actually expect to receive something
 	
 	return (ioBufferPosition == inBufferLength) ? kComplete : kIncomplete;
+#endif // SANE_RECV_RESULTS
 }
 
 
 
 CommunicationsChannel::CommunicationResult
-CommunicationsChannel::send_some(byte* inBuffer, size_t& ioBufferPosition, size_t inBufferLength)
-{	
+CommunicationsChannel::send_some(TCPsocket inSocket, byte* inBuffer, size_t& ioBufferPosition, size_t inBufferLength)
+{
+//	std::cout << "Want to send " << inBufferLength << " bytes; buffer position " << ioBufferPosition << std::endl;
+	
 	size_t theBytesLeft = inBufferLength - ioBufferPosition;
 
-	int theResult = mSocket->send(inBuffer + ioBufferPosition, theBytesLeft);
+	int theResult = SDLNet_TCP_Send(inSocket, inBuffer + ioBufferPosition, theBytesLeft);
+
+//	std::cout << "  theResult is " << theResult << std::endl;
 
 	if(theResult < 0)
 	{
@@ -151,7 +227,7 @@ bool
 CommunicationsChannel::receiveHeader()
 {
 	CommunicationResult theResult =
-		receive_some(mIncomingHeader, mIncomingHeaderPosition, kHeaderPackedSize);
+		receive_some(mSocket, mIncomingHeader, mIncomingHeaderPosition, kHeaderPackedSize);
 
 	if(theResult == kComplete)
 	{
@@ -196,7 +272,7 @@ bool
 CommunicationsChannel::_receiveMessage()
 {
 	CommunicationResult theResult =
-		receive_some(mIncomingMessage->buffer(), mIncomingMessagePosition, mIncomingMessage->length());
+		receive_some(mSocket, mIncomingMessage->buffer(), mIncomingMessagePosition, mIncomingMessage->length());
 
 	if(theResult == kComplete)
 	{
@@ -231,7 +307,7 @@ bool
 CommunicationsChannel::sendHeader()
 {
 	CommunicationResult theResult =
-		send_some(mOutgoingHeader, mOutgoingHeaderPosition, kHeaderPackedSize);
+		send_some(mSocket, mOutgoingHeader, mOutgoingHeaderPosition, kHeaderPackedSize);
 
 	if(theResult == kComplete)
 	{
@@ -256,7 +332,7 @@ CommunicationsChannel::sendMessage()
 	UninflatedMessage* theOutgoingMessage = mOutgoingMessages.front();
 	
 	CommunicationResult theResult =
-		send_some(theOutgoingMessage->buffer(), mOutgoingMessagePosition, theOutgoingMessage->length());
+		send_some(mSocket, theOutgoingMessage->buffer(), mOutgoingMessagePosition, theOutgoingMessage->length());
 	
 	if(theResult == kComplete)
 	{
@@ -371,7 +447,7 @@ CommunicationsChannel::enqueueOutgoingMessage(const Message& inMessage)
 IPaddress
 CommunicationsChannel::peerAddress() const
 {
-	return mSocket->remote_address();
+	return *(SDLNet_TCP_GetPeerAddress(mSocket));
 }
 
 void
@@ -389,14 +465,18 @@ CommunicationsChannel::connect(const IPaddress& inAddress)
 	
 	mIncomingMessages.clear();
 
-	mSocket = NetGetNetworkInterface()->tcp_connect_socket(inAddress);
+	// Have to copy the address since we get a const, but SDL_net takes a non-const
+	IPaddress theAddress = inAddress;
+	mSocket = SDLNet_TCP_Open(&theAddress);
 
-	if(mSocket)
+	if(mSocket != NULL)
 	{
-		mSocket->set_non_blocking(true);
 		mConnected = true;
+
 		mTicksAtLastReceive = machine_tick_count();
 		mTicksAtLastSend = machine_tick_count();
+		
+		MakeTCPsocketNonBlocking(&mSocket);
 	}
 }
 
@@ -405,8 +485,15 @@ CommunicationsChannel::connect(const IPaddress& inAddress)
 void
 CommunicationsChannel::connect(const std::string& inAddressString, uint16 inPort)
 {
-	auto address = NetGetNetworkInterface()->resolve_address(inAddressString, inPort);
-	if (address.has_value()) connect(address.value());
+	IPaddress theAddress;
+	// Have to copy the string since we get a const, but SDL_net takes a non-const
+	char* theDuplicateString = strdup(inAddressString.c_str());
+	int theResult = SDLNet_ResolveHost(&theAddress, theDuplicateString, inPort);
+	free(theDuplicateString);
+	if(theResult == 0)
+	{
+		connect(theAddress);
+	}
 }
 
 
@@ -414,8 +501,12 @@ CommunicationsChannel::connect(const std::string& inAddressString, uint16 inPort
 void
 CommunicationsChannel::disconnect()
 {
-	mSocket.reset();
-	mConnected = false;
+	if(mSocket != NULL)
+	{
+		SDLNet_TCP_Close(mSocket);
+		mSocket = NULL;
+		mConnected = false;
+	}
 
     // Discard all data so next connect()ion starts with a clean slate
     mOutgoingHeaderPosition = 0;
@@ -445,9 +536,9 @@ Message*
 CommunicationsChannel::receiveMessage(Uint32 inOverallTimeout, Uint32 inInactivityTimeout)
 {
 	// Here we give a backstop for our inactivity timeout
-	uint64_t theTicksAtStart = machine_tick_count();
+	Uint32 theTicksAtStart = machine_tick_count();
 	
-	uint64_t theDeadline = machine_tick_count() + inOverallTimeout;
+	Uint32 theDeadline = machine_tick_count() + inOverallTimeout;
 
 	pump();
 
@@ -482,7 +573,7 @@ CommunicationsChannel::receiveSpecificMessage(
 	Uint32 inInactivityTimeout)
 {
 	Message* theMessage = NULL;
-	uint64_t theDeadline = machine_tick_count() + inOverallTimeout;
+	Uint32 theDeadline = machine_tick_count() + inOverallTimeout;
 
 	while(machine_tick_count() < theDeadline)
 	{
@@ -519,8 +610,8 @@ CommunicationsChannel::flushOutgoingMessages(bool shouldDispatchIncomingMessages
 			    Uint32 inOverallTimeout,
 			    Uint32 inInactivityTimeout)
 {
-	uint64_t	theDeadline = machine_tick_count() + inOverallTimeout;
-	uint64_t	theTicksAtStart = machine_tick_count();
+	Uint32	theDeadline = machine_tick_count() + inOverallTimeout;
+	Uint32	theTicksAtStart = machine_tick_count();
 
 	while(isConnected()
 		&& !mOutgoingMessages.empty()
@@ -541,8 +632,8 @@ void CommunicationsChannel::multipleFlushOutgoingMessages(
 	Uint32 inOverallTimeout,
 	Uint32 inInactivityTimeout)
 {
-	uint64_t theDeadline = machine_tick_count() + inOverallTimeout;
-	uint64_t theTicksAtStart = machine_tick_count();
+	Uint32 theDeadline = machine_tick_count() + inOverallTimeout;
+	Uint32 theTicksAtStart = machine_tick_count();
 
 	bool someoneIsStillActive = true;
 
@@ -571,21 +662,62 @@ void CommunicationsChannel::multipleFlushOutgoingMessages(
 
 CommunicationsChannelFactory::CommunicationsChannelFactory(uint16 inPort)
 {
-	mSocketListener = NetGetNetworkInterface()->tcp_open_listener(inPort);
-	mSocketListener->set_non_blocking(true);
+	IPaddress theAddress;
+	theAddress.host = INADDR_ANY;
+	theAddress.port = SDL_SwapBE16(inPort);
+
+	mSocket = SDLNet_TCP_Open(&theAddress);
 }
+
 
 
 CommunicationsChannel*
 CommunicationsChannelFactory::newIncomingConnection()
 {
-	if (auto connection = mSocketListener->accept_connection())
+	CommunicationsChannel* theNewChannel = NULL;
+	
+	if(isFunctional())
 	{
-		connection->set_non_blocking(true);
-		return new CommunicationsChannel(std::move(connection));
+		SDLNet_SocketSet theSocketSet = SDLNet_AllocSocketSet(1);
+		SDLNet_TCP_AddSocket(theSocketSet, mSocket);
+		if(SDLNet_CheckSockets(theSocketSet, 0) > 0) {
+			// Yee-haw!  There's an incoming connection request.
+			TCPsocket theNewSocket = SDLNet_TCP_Accept(mSocket);
+			theNewChannel = new CommunicationsChannel(theNewSocket);
+			MakeTCPsocketNonBlocking(&theNewSocket);
+
+		}
+		SDLNet_FreeSocketSet(theSocketSet);
 	}
 
-	return nullptr;
+	return theNewChannel;
+}
+
+
+
+CommunicationsChannelFactory::~CommunicationsChannelFactory()
+{
+	SDLNet_TCP_Close(mSocket);
+}
+
+void MakeTCPsocketNonBlocking(TCPsocket *socket) {
+  // SET NONBLOCKING MODE
+  // XXX: this depends on intimate carnal knowledge of the SDL_net struct _UDPsocket
+  // if it changes that structure, we are hosed.
+
+#ifdef WIN64
+  int fd = ((int *) (*socket))[2];
+#else
+  int fd = ((int *) (*socket))[1];
+#endif
+#if defined(WIN32)
+  u_long val = 1;
+  ioctlsocket(fd, FIONBIO, &val);
+#else
+
+  fcntl(fd, F_SETFL, O_NONBLOCK);
+
+#endif
 }
 
 #endif // !defined(DISABLE_NETWORKING)

@@ -457,18 +457,21 @@ void OverheadMapClass::generate_false_automap(
 	saved_automap_lines= new byte[automap_line_buffer_size];
 	saved_automap_polygons= new byte[automap_polygon_buffer_size];
 
-	memcpy(saved_automap_lines, automap_lines, automap_line_buffer_size);
-	memcpy(saved_automap_polygons, automap_polygons, automap_polygon_buffer_size);
-	memset(automap_lines, 0, automap_line_buffer_size);
-	memset(automap_polygons, 0, automap_polygon_buffer_size);
-		
-	add_poly_to_false_automap(polygon_index);
-	polygon_index= flood_map(polygon_index, INT32_MAX, false_automap_cost_proc, _breadth_first, (void *) NULL);
-	do
+	if (saved_automap_lines && saved_automap_polygons)
 	{
-		polygon_index= flood_map(NONE, INT32_MAX, false_automap_cost_proc, _breadth_first, (void *) NULL);
+		memcpy(saved_automap_lines, automap_lines, automap_line_buffer_size);
+		memcpy(saved_automap_polygons, automap_polygons, automap_polygon_buffer_size);
+		memset(automap_lines, 0, automap_line_buffer_size);
+		memset(automap_polygons, 0, automap_polygon_buffer_size);
+		
+		add_poly_to_false_automap(polygon_index);
+		polygon_index= flood_map(polygon_index, INT32_MAX, false_automap_cost_proc, _breadth_first, (void *) NULL);
+		do
+		{
+			polygon_index= flood_map(NONE, INT32_MAX, false_automap_cost_proc, _breadth_first, (void *) NULL);
+		}
+		while (polygon_index!=NONE);
 	}
-	while (polygon_index!=NONE);
 }
 
 

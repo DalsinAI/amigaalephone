@@ -284,7 +284,7 @@ void FontSpecifier::OGL_Reset(bool IsStarting)
 	OGL_Register(this);
  	
  	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, NearFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -379,15 +379,14 @@ void FontSpecifier::OGL_DrawText(const char *text, const screen_rectangle &r, sh
 	if (flags & _wrap_text) {
 		int last_non_printing_character = 0, text_width = 0;
 		unsigned count = 0;
-		auto len = strlen(text_to_draw);
-		while (count < len && text_width < RECTANGLE_WIDTH(&r)) {
+		while (count < strlen(text_to_draw) && text_width < RECTANGLE_WIDTH(&r)) {
 			text_width += CharWidth(text_to_draw[count]);
 			if (text_to_draw[count] == ' ')
 				last_non_printing_character = count;
 			count++;
 		}
 		
-		if( count != len) {
+		if( count != strlen(text_to_draw)) {
 			char remaining_text_to_draw[256];
 			
 			// If we ever have to wrap text, we can't also center vertically. Sorry.

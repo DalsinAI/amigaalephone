@@ -24,11 +24,8 @@
 
 */
 
-#include <memory>
-
 #include "cseries.h"
 #include "FileHandler.h"
-#include "SoundManagerEnums.h"
 
 class StreamDecoder
 {
@@ -38,20 +35,17 @@ public:
 	virtual void Rewind() = 0;
 	virtual void Close() = 0;
 
-	virtual AudioFormat GetAudioFormat() = 0;
+	virtual bool IsSixteenBit() = 0;
 	virtual bool IsStereo() = 0;
+	virtual bool IsSigned() = 0;
 	virtual int BytesPerFrame() = 0;
-	virtual uint32_t Rate() = 0;
+	virtual float Rate() = 0;
 	virtual bool IsLittleEndian() = 0;
-	virtual float Duration() = 0;
-	virtual uint32_t Position() = 0;
-	virtual void Position(uint32_t position) = 0;
-	virtual uint32_t Size() = 0;
 
 	StreamDecoder() { }
 	virtual ~StreamDecoder() { }
 
-	static std::unique_ptr<StreamDecoder> Get(FileSpecifier &File); // can return 0
+	static StreamDecoder* Get(FileSpecifier &File); // can return 0
 };
 
 class Decoder : public StreamDecoder
@@ -61,7 +55,7 @@ public:
 	~Decoder() { }
 
 	// total number of frames in the file
-	virtual int32 Frames() = 0;
+	virtual int32 Frames() = 0; 
 
 	static Decoder* Get(FileSpecifier &File); // can return 0
 };

@@ -166,7 +166,6 @@ enum
 	OGL_Txtr_Landscape,
 	OGL_Txtr_Inhabitant,
 	OGL_Txtr_WeaponsInHand,
-	OGL_Txtr_HUD,
 	OGL_NUMBER_OF_TEXTURE_TYPES
 };
 
@@ -253,9 +252,8 @@ struct OGL_ConfigureData
 
 	bool GeForceFix;
 	bool WaitForVSync;
-	bool Use_sRGB;
-
-	bool BillboardXY; // for when MimicSW is off
+  bool Use_sRGB;
+	bool Use_NPOT;
 };
 
 OGL_ConfigureData& Get_OGL_ConfigureData();
@@ -390,24 +388,14 @@ void OGL_ResetModelSkins(bool Clear_OGL_Txtrs);
 
 #endif // def HAVE_OPENGL
 
-// Fog modes
-enum {
-	OGL_Fog_Linear,
-	OGL_Fog_Exp,
-	OGL_Fog_Exp2
-};
 
 // Fog data record
 struct OGL_FogData
 {
 	rgb_color Color;
 	float Depth;		// In World Units (1024 internal units)
-	float Start;		// In World Units (1024 internal units); Linear only
 	bool IsPresent;
 	bool AffectsLandscapes;
-	int Mode;
-
-	float LandscapeMix;	// 0-1
 };
 
 // Fog types
@@ -418,8 +406,8 @@ enum
 	OGL_NUMBER_OF_FOG_TYPES
 };
 
-
 OGL_FogData *OGL_GetFogData(int Type);
+
 
 class InfoTree;
 void parse_mml_opengl(const InfoTree& root);

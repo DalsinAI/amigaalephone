@@ -21,12 +21,10 @@
 
 	  <!ELEMENT subtable ((alias*),(description?),(length?),(index?),(call?),(function|subtable|variable|note)*)>
 	  <!ATTLIST subtable name CDATA #REQUIRED>
-	  <!ATTLIST subtable order CDATA #IMPLIED>
 	  <!ATTLIST subtable classname ID #REQUIRED>
 
 	  <!ELEMENT subtable-accessor ((alias?),(description?),(function|subtable|variable)*)>
 	  <!ATTLIST subtable-accessor name CDATA #REQUIRED>
-	  <!ATTLIST subtable-accessor order CDATA #IMPLIED>
 	  <!ATTLIST subtable-accessor classname ID #REQUIRED>
 	  <!ATTLIST subtable-accessor index CDATA #REQUIRED>
 
@@ -38,12 +36,10 @@
 	  <!ELEMENT function ((description?),(argument*),(return*),(note*))>
 	  <!ATTLIST function name CDATA #REQUIRED>
 	  <!ATTLIST function access (local-player|all) 'all'>
-	  <!ATTLIST function order CDATA #IMPLIED>
 	  <!ATTLIST function return (single|variant) 'single'>
 
 	  <!ELEMENT function-variable ((description?),(argument),(type))>
 	  <!ATTLIST function-variable name CDATA #REQUIRED>
-	  <!ATTLIST function-variable order CDATA #IMPLIED>
 	  <!ATTLIST function-variable classname CDATA #IMPLIED>
 
 	  <!ELEMENT argument (description?,type)>
@@ -54,18 +50,15 @@
 
 	  <!ELEMENT variable ((alias*), (description?),(type),(note*))>
 	  <!ATTLIST variable name CDATA #REQUIRED>
-	  <!ATTLIST variable order CDATA #IMPLIED>
 	  <!ATTLIST variable access (read-only|read-write|local-player|write-only) "read-write">
 	  <!ATTLIST variable version CDATA #IMPLIED>
 
 	  <!ELEMENT accessor ((description?),(length?),(index?),(call?),(function)*)>
 	  <!ATTLIST accessor name ID #REQUIRED>
-	  <!ATTLIST accessor order CDATA #IMPLIED>
 	  <!ATTLIST accessor contains IDREF #REQUIRED>
 
 	  <!ELEMENT enum-accessor ((description?),(length?),(index?),(call?))>
 	  <!ATTLIST enum-accessor name ID #REQUIRED>
-	  <!ATTLIST enum-accessor order CDATA #IMPLIED>
 	  <!ATTLIST enum-accessor contains IDREF #REQUIRED>
 	  <!ATTLIST enum-accessor nice-name CDATA #IMPLIED>
 	  
@@ -138,26 +131,17 @@
 		<p>Only numbers, strings, booleans, and tables (including Aleph One’s built-in userdata tables) can be restored.</p>
       </description>
     </section>
-	<section name="Solo Plugin Write Access" id="write_access">
-	  <description>
-		<p>Plugins that specify solo Lua scripts can also specify write access to features (see the Plugins Guide). Legacy solo Lua plugins are automatically assigned the <code>world</code> write access feature. This means they can modify anything in the game using Lua, but only one <code>world</code> feature script can run at a time, and achievements will be disabled.</p>
-		<p>The write access features <code>music</code>, <code>fog</code>, and <code>overlays</code> can run with other non-<code>world</code> Lua plugins that do not access the same features. For example, only one <code>music</code> plugin can run at a time, but a <code>music</code> plugin and <code>fog</code> plugin could run at the same time.</p>
-		<p>The write access features <code>ephemera</code> and <code>sound</code> can run with any other non-<code>world</code> write access plugins. Remember when writing a <code>ephemera</code> plugin that other plugins (and embedded Lua) can also access ephemera, so manage accordingly.</p>
-		<p>Plugins can specify multiple non-<code>world</code> write access features, and compatibility with other plugins will be determined automatically.</p>
-		<p>All solo Lua scripts can use Players:print and print to the console.</p>
-	  </description>
-	</section>
   </section>
   <triggers id="triggers">
     <description>These are functions scripts can define which Aleph One will call at specific times or events. For example, to regenerate health:
 	<span class="pre">Triggers = {}
-function Triggers.idle()
-  for p in Players() do 
+	function Triggers.idle()
+	for p in Players() do 
     if p.life &lt; 150 and not p.dead then 
-      p.life = p.life + 1
+    p.life = p.life + 1
     end
-  end
-end
+	end
+	end
 	</span>
 	Calling Triggers = {} at the beginning of the script removes the compatibility triggers installed for old Lua scripts, speeding up execution of new scripts.
 	</description>
@@ -357,14 +341,6 @@ end
 	  <argument name="t" version="20210408"><type>variant</type></argument>
 	  <note>t can be a side, polygon_floor, polygon_ceiling, monster, scenery, polygon; see Polygon:check_collision for info on how to decode. It can also be nil, in the rare case a projectile detonates without hitting something</note>
     </function>
-	<function name="calculate_level_completion_state" version="20240712">
-	  <description>replaces the classic completion state calculation</description>
-	  <return><type>CompletionState</type></return>
-	</function>
-	<function name="monster_kamikazed" version="20240712">
-	  <description>whenever a monster kamikazes</description>
-	  <argument name="monster"><type>monster</type></argument>
-	</function>
   </triggers>
   <section id="using_tables" name="Using Tables">
     <description><p>There are numerous tables (technically, userdata) defined in Aleph One which scripts can use to access objects in the game. A complete list is below.</p>
@@ -475,10 +451,6 @@ end
       </variable>
     </table>
     <table name="game" singleton="true">
-      <function name="autosave" version="20250302">
-		<description>saves the game without prompting the user, if possible</description>
-		<note>solo only</note>
-      </function>
       <variable name="dead_players_drop_items" version="20150619">
         <description>whether dead players drop items</description>
         <type>boolean</type>
@@ -502,34 +474,37 @@ end
 		<description>the game kill limit, or 0 if there is none</description>
 		<type>number</type>
       </variable>
-	  <function name="local_random">
-		<description>returns a random number between 0 and n-1 from Aleph One’s original random number generator</description>
-		<argument name="n"><type>number</type></argument>
-		<return><type>number</type></return>
-		<note>use only for local player effects (see Net Games and Films)</note>
-      </function>
       <variable name="monsters_replenish" version="20111201">
 		<description>whether monsters spawn or not; in a net game, this corresponds to the "Aliens" checkbox</description>
 		<type>boolean</type>
 		<note>this can suppress initial monster placement, if set to false directly when the script is loaded</note>
       </variable>
+      <variable name="proper_item_accounting" version="20100118">
+		<description>When true, the current item counts on the map are updated properly when Lua deletes map items and changes player inventories. This defaults to false to preserve film playback with older scripts. New scripts that manipulate items should always set this to true.</description>
+		<type>boolean</type>
+      </variable>
       <variable name="nonlocal_overlays" version="20200830">
 		<description>When false, only the local player’s overlays are used, and only prints to the local player will be displayed. When true, the overlays and prints of whatever player is currently being viewed will apply. This defaults to false for compatibility with scripts that depend on the old behavior.</description>
 		<type>boolean</type>
+      </variable>
+      <variable name="time_remaining" access="read-only">
+		<description>the number of ticks until the game ends, or nil if there is no time limit</description>
+		<type>number</type>
+      </variable>
+      <variable name="scoring_mode">
+		<description>the current scoring mode (if the gametype is "custom")</description>
+		<type>scoring_mode_type</type>
       </variable>
       <variable name="over" access="write-only">
 		<description>Use this variable to override the game’s default scoring behavior. If set to false, the game will not end due to a score limit. If set to true, the game ends immediately. If left unset or if set to nil, the game will end if a score limit is reached. (Note that you cannot prevent the game from ending due to a time limit.)</description>
 		<type>boolean</type>
       </variable>
-	  <variable name="player" version="20250829">
-		<description>In Tag games, the player who is It. In Kill the Man With the Ball or Rugby games, the player who is carrying the ball</description>
-		<type>Player</type>
-		<note>writing to this will only work in Tag games</note>
-	  </variable>
-      <variable name="proper_item_accounting" version="20100118">
-		<description>When true, the current item counts on the map are updated properly when Lua deletes map items and changes player inventories. This defaults to false to preserve film playback with older scripts. New scripts that manipulate items should always set this to true.</description>
-		<type>boolean</type>
-      </variable>
+      <function name="local_random">
+		<description>returns a random number between 0 and n-1 from Aleph One’s original random number generator</description>
+		<argument name="n"><type>number</type></argument>
+		<return><type>number</type></return>
+		<note>use only for local player effects (see Net Games and Films)</note>
+      </function>
       <function name="random">
 		<description>returns a random number between 0 and n-1 using a good random number generator</description>
 		<argument name="n"><type>number</type></argument>
@@ -560,10 +535,6 @@ end
 		<description>saves the game (as if the user had activated a pattern buffer)</description>
 		<note>solo only</note>
       </function>
-	  <variable name="scoring_mode">
-		<description>the current scoring mode (if the gametype is "custom")</description>
-		<type>scoring_mode_type</type>
-      </variable>
       <function name="serialize" version="20200830">
         <description>serializes v into a binary string</description>
         <argument name="v"><type>value</type></argument>
@@ -574,11 +545,6 @@ end
 		<description>ticks since game started</description>
 		<type>time</type>
       </variable>
-	   <variable name="time_remaining" access="read-only">
-		<description>the number of ticks until the game ends, or nil if there is no time limit</description>
-		<type>number</type>
-      </variable>
-      
       <variable name="type" access="read-only">
 		<description>whether the game is EMFH, KOTH, etc.</description>
 		<type>game_type</type>
@@ -609,7 +575,6 @@ end
       </variable>
       <variable name="z" access="read-only" version="20111201">
 		<type>WU</type>
-		<note>from floor or ceiling</note>
       </variable>
     </table>
     <table name="item">
@@ -636,19 +601,11 @@ end
 		<argument name="z"><type>WU</type></argument>
 		<argument name="polygon"><type>polygon</type></argument>
       </function>
-	  <function name="teleport_in" version="20240712">
-		<description>teleports item in</description>
-		<note>can fail silently if there are not enough effects slots</note>
-	  </function>
-	  <function name="teleport_out" version="20240712">
-		<description>teleports item out</description>
-		<note>can fail silently if there are not enough effects slots</note>
-	  </function>
       <variable name="type" access="read-only">
 		<description>type of item</description>
 		<type>item_type</type>
       </variable>
-      <variable name="visible" version="20240712">
+      <variable name="visible" access="read-only" version="20220115">
     <type>boolean</type>
       </variable>
       <variable name="x" access="read-only">
@@ -690,7 +647,6 @@ end
       </variable>
       <variable name="z" access="read-only" version="20111201">
 		<type>WU</type>
-		<note>from floor or ceiling</note>
       </variable>
     </table>
 
@@ -698,7 +654,6 @@ end
       <function name="calculate_completion_state" version="20081213">
 		<description>returns whether level is finished, unfinished, or failed</description>
 		<return><type>completion_state</type></return>
-		<note>does not call the trigger, so it can be used in the trigger</note>
       </function>
       <variable name="completed" access="read-only" version="20111201">
 		<description>check this in Triggers.cleanup() to determine whether the player(s) teleported out</description>
@@ -741,20 +696,6 @@ end
 		<variable name="depth">
 		  <description>fog depth in WU</description>
 		  <type>number</type>
-		</variable>
-		<variable name="landscape_mix" version="20231125">
-		  <description>amount of fog to mix into landscape</description>
-		  <type>number</type>
-		  <note>values range from 0.0 to 1.0</note>
-		</variable>
-		<variable name="mode" version="20231125">
-		  <description>linear, exp, or exp2</description>
-		  <type>fog_mode</type>
-		</variable>
-		<variable name="start" version="20231125">
-		  <description>fog start in WU</description>
-		  <type>number</type>
-		  <note>only applies to linear fog</note>
 		</variable>
       </subtable>
       <variable name="low_gravity" access="read-only">
@@ -1149,83 +1090,31 @@ end
       </variable>
       <variable name="z" access="read-only" version="20111201">
 		<type>WU</type>
-		<note>from floor or ceiling</note>
       </variable>
     </table>
-    <table name="music">
-	  <function name="play" version="20231125">
-		<description>plays the music</description>
-		<argument name="segment" required="false"><type>music_segment</type></argument>
-		<note>for tracks containing multiple segments, an optional starting segment can be provided</note>
-		<note>if the music was stopped, restarts it</note>
-	  </function>
-	  <function name="stop" version="20231125">
-		<description>stops the music</description>
-	  </function>
-	  <function name="fade" version="20231125">
-		<description>fades the music</description>
-		<argument name="volume"><type>number</type></argument>
-		<argument name="duration" required="false"><type>seconds</type></argument>
-		<argument name="stop_after_fade" required="false"><type>boolean</type></argument>
-		<argument name="fade_type" required="false"><type>music_fade_type</type></argument>
-		<note>it will fade in until volume is reached. volume is decimal [0 - 1]</note>
-		<note>duration unit is seconds and is 1 if not specified</note>
-		<note>stop_after_fade is disabled by default, if set to true if the volume reaches 0 while fading the music will automatically stop</note>
-		<note>fade_type is the fading function, see MusicFadeTypes for values, default is linear</note>
-	  </function>
-	  <function name="add_track" version="git">
-		<description>adds an audio track used to create music segments</description>
-		<argument name="track" required="true"><type>string</type></argument>
-		<return><type>number</type></return>
-		<note>returns a unique identifier for the track, usable to create segments</note>
-	  </function>
-	  <function name="request_sequence_transition" version="git">
-		<description>requests a transition from the currently playing sequence to the specified one</description>
-		<argument name="sequence" required="true"><type>music_sequence</type></argument>
-		<note>the transition will happen at the end of the currently playing segment and as long as a segment transition is configured between it and one from the requested sequence</note>
-	  </function>
-	  <variable name="volume" version="20231125">
-		<description>the volume of the music</description>
-		<type>number</type>
-		<note>volume is decimal [0 - 1]</note>
-	  </variable>
-	  <variable name="active" access="read-only" version="20231125">
-		<description>returns true if the music is still playing</description>
-		<type>boolean</type>
-	  </variable>
-	  <subtable name="sequences" classname="music_sequences" version="git">
-		  <function name="new">
-			<description>creates a new empty sequence for the music channel and returns it</description>
-			<return><type>music_sequence</type></return>
-			<note>sequences can be seen as a set of segments configured to play in a specific order composing a track</note>
-			<note>sequences must be created and configured before the music channel starts playing otherwise they  will not be applied unless the music is stopped and restarted</note>
-		  </function>
-		  <subtable name="segments" classname="music_segments">
-		    <function name="new" order="1">
-				<description>creates a new music segment with the specified track, adds it to the sequence and returns it</description>
-				<argument name="track_identifier" required="true"><type>number</type></argument>
-				<return><type>music_segment</type></return>
-				<note>track_identifier is the unique identifier returned by the music add_track function</note>
-				<note>this function can be called multiple times with the same track identifier if multiple segments from the same track file are required</note>
-				<note>the order in which segments are created has no influence on the order in which they are played, see the add_transition function for that</note>
-		    </function>
-		    <function name="add_transition" order="2">
-				<description>specifies the next segment to play once the current one has finished and configures the transition</description>
-				<argument name="segment" required="true"><type>music_segment</type></argument>
-				<argument name="fade_out_type" required="false"><type>music_fade_type</type></argument>
-				<argument name="fade_out_duration" required="false"><type>seconds</type></argument>
-				<argument name="fade_in_type" required="false"><type>music_fade_type</type></argument>
-				<argument name="fade_in_duration" required="false"><type>seconds</type></argument>
-				<argument name="cross_fade" required="false"><type>boolean</type></argument>
-				<note>see MusicFadeTypes for the available fading functions, the default is none which means a seamless transition</note>
-				<note>the fades duration unit is seconds and is 0 if not specified</note>
-				<note>cross_fade is a boolean flag set to false if not specified</note>
-				<note>segment transitions across different sequences must also be configured to allow sequence transitions</note>
-				<note>the entire segment ordering system is handled through this function, if a full track must loop, the last segment of a sequence must transition to the first one of the same sequence</note>
-				<note>transition configuration must be completed before the music channel starts playing otherwise it will not be applied unless the music is stopped and restarted</note>
-		    </function>
-		</subtable>
-    </subtable>
+    <table name="music" singleton="true">
+      <function name="clear">
+		<description>clears the level playlist</description>
+      </function>
+      <function name="fade">
+		<description>fades out the currently playing track and clears the playlist</description>
+		<argument name="duration"><type>seconds</type></argument>
+      </function>
+      <function name="play">
+		<description>appends all of the specified tracks to the end of the playlist</description>
+		<argument name="track1"><type>string</type></argument>
+		<argument name="track2" required="false"><type>string</type></argument>
+		<argument name="..." required="false"><type>string</type></argument>
+      </function>
+      <function name="stop">
+		<description>stops level music and clears the playlist</description>
+      </function>
+      <function name="valid">
+		<description>for every track passed, return true if it exists and is playable and false otherwise</description>
+		<argument name="track1"><type>string</type></argument>
+		<argument name="track2" required="false"><type>string</type></argument>
+		<argument name="..." required="false"><type>string</type></argument>
+      </function>
     </table>
     <table name="platform">
 	  <variable name="activates_adjacent_platforms_at_each_level" version="20210408">
@@ -1408,10 +1297,6 @@ end
 		  <type>boolean</type>
 		  <note>latched</note>
 		</variable>
-		<variable name="aux_trigger" version="20231125">
-		  <description>formerly microphone button; now dedicated to Lua scripts</description>
-		  <type>boolean</type>
-		</variable>
 		<variable name="cycle_weapons_forward">
 		  <description>switches to next weapon</description>
 		  <type>boolean</type>
@@ -1425,6 +1310,11 @@ end
 		<variable name="left_trigger">
 		  <description>fires primary trigger</description>
 		  <type>boolean</type>
+		</variable>
+		<variable name="microphone_button">
+		  <description>activates the net mic</description>
+		  <type>boolean</type>
+		  <note>can not be set to true; can be set to false</note>
 		</variable>
 		<variable name="right_trigger">
 		  <description>fires secondary trigger</description>
@@ -1790,12 +1680,6 @@ end
       <subtable-accessor name="weapons" classname="player_weapon" index="weapon_type">
 		<subtable name="primary" classname="player_weapon_trigger">
 		  <alias>secondary</alias>
-		  <function name="reload" version="git">
-			<description>reloads if possible</description>
-			<type>boolean</type>
-			<note>only available for current weapon</note>
-			<note>discards remainder of magazine</note>
-		  </function>
 		  <variable name="rounds" access="read-only">
 			<description>how many rounds are currently loaded into the weapon</description>
 			<type>number</type>
@@ -1804,11 +1688,12 @@ end
 		<function name="select">
 		  <description>attempts to force player to ready weapon</description>
 		</function>
-		<variable name="type" access="read-only">
-		  <description>type of this weapon</description>
-		  <type>weapon_type</type>
-		</variable>
       </subtable-accessor>
+      <variable name="weapons.current" access="read-only">
+		<description>weapon the player is currently wielding</description>
+		<type>player_weapon</type>
+		<note>can be nil</note>
+      </variable>
       <variable name="x" access="read-only">
 		<type>WU</type>
       </variable>
@@ -1848,7 +1733,6 @@ end
       </variable>
       <variable name="z" access="read-only" version="20111201">
 		<type>WU</type>
-		<note>from floor or ceiling</note>
       </variable>
     </table>
     <table name="polygon">
@@ -2103,22 +1987,10 @@ end
 		<description>whether this scenery is solid</description>
 		<type>boolean</type>
       </variable>
-	  <function name="teleport_in" version="20240712">
-		<description>teleports scenery in</description>
-		<note>can fail silently if there are not enough effects slots</note>
-	  </function>
-	  <function name="teleport_out" version="20240712">
-		<description>teleports scenery out</description>
-		<note>can fail silently if there are not enough effects slots</note>
-	  </function>
       <variable name="type" access="read-only">
 		<description>type of scenery</description>
 		<type>scenery_type</type>
       </variable>
-	  <variable name="visible" version="20240712">
-		<description>whether this scenery is visible</description>
-		<type>boolean</type>
-	  </variable>
       <variable name="x" access="read-only">
 		<type>WU</type>
       </variable>
@@ -2177,9 +2049,9 @@ end
 		  <type>collection</type>
 		</variable>
 		<variable name="empty">
-		  <description>whether side is empty</description>
+		  <description>whether transparent side is empty</description>
 		  <type>boolean</type>
-		  <note version="Git">transparent sides only in earlier versions</note>
+		  <note>transparent side only</note>
 		  <note>setting empty to false is a no-op; set collection and texture_index instead</note>
 		</variable>
 		<variable name="light">
@@ -2258,7 +2130,6 @@ end
       </variable>
       <variable name="z" access="read-only" version="20111201">
 		<type>WU</type>
-		<note>from floor or ceiling</note>
       </variable>
     </table>
     <table name="tag">
@@ -2455,49 +2326,7 @@ end
 		<description>iterates through all monster starting locations in the level</description>
       </call>
     </accessor>
-    <accessor name="Music" contains="music">
-      <length>
-		<description>maximum number of music channels active simultaneously</description>
-      </length>
-      <index/>
-      <call>
-		<description>iterates through all the music channels</description>
-      </call>
-	  <function name="new" version="20231125">
-		<description>returns a new music channel</description>
-		<argument name="track" required="false"><type>string</type></argument>
-		<argument name="volume" required="false"><type>number</type></argument>
-		<argument name="loop" required="false"><type>boolean</type></argument>
-		<return><type>music</type></return>
-		<note>the track file parameter should be omitted for segmented music and add_track should be used instead</note>
-		<note>volume is decimal [0 - 1] and is 1 if not specified</note>
-		<note>loop is enabled by default</note>
-	  </function>
-	  <function name="clear">
-		<description>clears the level playlist</description>
-      </function>
-      <function name="fade">
-		<description>fades out the currently playing track and clears the playlist</description>
-		<argument name="duration"><type>seconds</type></argument>
-		<argument name="fade_type" required="false"><type>music_fade_type</type></argument>
-		<note>fade_type is the fading function, see MusicFadeTypes for values, default is linear</note>
-      </function>
-      <function name="play">
-		<description>appends all of the specified tracks to the end of the playlist</description>
-		<argument name="track1"><type>string</type></argument>
-		<argument name="track2" required="false"><type>string</type></argument>
-		<argument name="..." required="false"><type>string</type></argument>
-      </function>
-      <function name="stop">
-		<description>stops level music and clears the playlist</description>
-      </function>
-      <function name="valid">
-		<description>for every track passed, return true if it exists and is playable and false otherwise</description>
-		<argument name="track1"><type>string</type></argument>
-		<argument name="track2" required="false"><type>string</type></argument>
-		<argument name="..." required="false"><type>string</type></argument>
-      </function>
-    </accessor>
+    <accessor name="Music" contains="music"/>
     <accessor name="Platforms" contains="platform">
       <length>
 		<description>number of platforms on the level</description>
@@ -2659,21 +2488,6 @@ end
       <variable name="bitmap_count">
 		<description>number of bitmaps in collection</description>
       </variable>
-	  <variable name="landscapes.default">
-		<type>landscape</type>
-		<description>default options for all landscapes in this collection</description>
-	  </variable>
-	  <subtable-accessor name="landscapes" classname="landscape" index="frame" access="local-player" version="git">
-		<variable name="azimuth">
-		  <description>angle in degrees to rotate the landscape leftward relative to the map</description>
-		  <type>angle</type>
-		</variable>
-		<variable name="elevation">
-		  <description>angle in degrees to rotate the landscape texture upward relative to the horizon</description>
-		  <type>angle</type>
-		  <note>only works with spherical landscapes</note>
-		</variable>
-	  </subtable-accessor>
       <mnemonics>
 		<mnemonic name="interface"/>
 		<mnemonic name="weapons in hand"/>
@@ -2908,13 +2722,6 @@ end
 		<mnemonic name="tint jjaro"/>
       </mnemonics>
     </enum>
-	<enum name="fog_mode">
-	  <mnemonics>
-		<mnemonic name="linear"/>
-		<mnemonic name="exp"/>
-		<mnemonic name="exp2"/>
-	  </mnemonics>
-	</enum>
     <enum name="game_type">
       <mnemonics>
 		<mnemonic name="kill monsters"/>
@@ -3517,13 +3324,6 @@ end
 		<mnemonic name="split"/>
       </mnemonics>
     </enum>
-	<enum name="music_fade_type">
-      <mnemonics>
-	    <mnemonic name="none"/>
-		<mnemonic name="linear"/>
-		<mnemonic name="sinusoidal"/>
-      </mnemonics>
-    </enum>
     <enum name="sound">
       <mnemonics>
 		<mnemonic name="startup"/>
@@ -3766,12 +3566,6 @@ end
 		<mnemonic name="fast vertical slide"/>
 		<mnemonic name="wander"/>
 		<mnemonic name="fast wander"/>
-		<mnemonic name="reverse horizontal slide" version="20231125"/>
-		<mnemonic name="reverse fast horizontal slide" version="20231125"/>
-		<mnemonic name="reverse vertical slide" version="20231125"/>
-		<mnemonic name="reverse fast vertical slide" version="20231125"/>
-		<mnemonic name="2x" version="20231125"/>
-		<mnemonic name="4x" version="20231125"/>
       </mnemonics>
     </enum>
     <enum name="weapon_type">
@@ -3798,7 +3592,6 @@ end
     <enum-accessor name="EffectTypes" contains="effect_type" nice-name="Effects"/>
 	<enum-accessor name="EphemeraQualities" contains="ephemera_quality" nice-name="Ephemera Quality"/>
     <enum-accessor name="FadeTypes" contains="fade_type" nice-name="Faders"/>
-	<enum-accessor name="FogModes" contains="fog_mode" nice-name="Fog Modes"/>
     <enum-accessor name="GameTypes" contains="game_type" nice-name="Game Types"/>
     <enum-accessor name="ItemKinds" contains="item_kind" nice-name="Item Kinds"/>
     <enum-accessor name="ItemTypes" contains="item_type" nice-name="Item Types"/>
@@ -3818,7 +3611,6 @@ end
     <enum-accessor name="SceneryTypes" contains="scenery_type" nice-name="Scenery"/>
     <enum-accessor name="ScoringModes" contains="scoring_mode" nice-name="Scoring Modes"/>
     <enum-accessor name="SideTypes" contains="side_type" nice-name="Side Types"/>
-	<enum-accessor name="MusicFadeTypes" contains="music_fade_type" nice-name="Music Fade Types"/>
     <enum-accessor name="Sounds" contains="sound" nice-name="Sounds"/>
     <enum-accessor name="TextureTypes" contains="texture_type" nice-name="Texture Types"/>
     <enum-accessor name="TransferModes" contains="transfer_mode" nice-name="Transfer Modes"/>

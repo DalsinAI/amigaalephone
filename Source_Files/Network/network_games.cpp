@@ -342,7 +342,7 @@ short get_network_compass_state(
 	short player_index)
 {
 	short state= _network_compass_all_off;
-	world_point2d *beacon= nullptr;
+	world_point2d *beacon= (world_point2d *) NULL;
 
         if (use_lua_compass [player_index])
         {
@@ -377,7 +377,7 @@ short get_network_compass_state(
                                 {
                                         if (dynamic_world->game_player_index!=NONE)
                                         {
-                                                beacon= &get_player_data(dynamic_world->game_player_index)->location;
+                                                beacon= (world_point2d *) &get_player_data(dynamic_world->game_player_index)->location;
                                         }
                                 }
                                 break;
@@ -391,7 +391,7 @@ short get_network_compass_state(
                                 {
                                         if (dynamic_world->game_player_index!=NONE)
                                         {
-                                                beacon= &get_player_data(dynamic_world->game_player_index)->location;
+                                                beacon= (world_point2d *) &get_player_data(dynamic_world->game_player_index)->location;
                                         }
                                 }
                                 break;
@@ -405,7 +405,7 @@ short get_network_compass_state(
                                 {
                                         if (dynamic_world->game_player_index!=NONE)
                                         {
-                                                beacon= &get_player_data(dynamic_world->game_player_index)->location;
+                                                beacon= (world_point2d *) &get_player_data(dynamic_world->game_player_index)->location;
                                         }
                                 }
                                 break;
@@ -415,7 +415,7 @@ short get_network_compass_state(
 	if (beacon)
 	{        
 		struct player_data *player= get_player_data(player_index);
-		struct world_point2d *origin= &player->location;
+		struct world_point2d *origin= (world_point2d *) &player->location;
 		angle theta= NORMALIZE_ANGLE(get_object_data(player->object_index)->facing-arctangent(origin->x-beacon->x, origin->y-beacon->y));
 		
 		if (theta>FULL_CIRCLE-NETWORK_COMPASS_SLOP || theta<QUARTER_CIRCLE+NETWORK_COMPASS_SLOP) state|= _network_compass_se;
@@ -702,7 +702,7 @@ void calculate_ranking_text(
 	    break;
 	  case _game_of_most_time:
 	  case _game_of_least_time:
-	    seconds= std::abs(ranking)/TICKS_PER_SECOND;
+	    seconds= ABS(ranking)/TICKS_PER_SECOND;
 	    sprintf(buffer, "%ld:%02ld", seconds/60, seconds%60);
 	    break;
 	  }
@@ -716,7 +716,7 @@ void calculate_ranking_text(
 		case _game_of_kill_man_with_ball:
 		case _game_of_tag:
 		case _game_of_defense:
-			seconds= std::abs(ranking)/TICKS_PER_SECOND;
+			seconds= ABS(ranking)/TICKS_PER_SECOND;
 			sprintf(buffer, "%ld:%02ld", seconds/60, seconds%60);
 			break;
 		// END Benad
@@ -769,7 +769,7 @@ void calculate_ranking_text_for_post_game(
 	    break;
 	  case _game_of_most_time:
 	  case _game_of_least_time:
-	    seconds= std::abs(ranking)/TICKS_PER_SECOND;
+	    seconds= ABS(ranking)/TICKS_PER_SECOND;
 	    getcstr(format, strNETWORK_GAME_STRINGS, minutesPossessedFormatString);
 	    sprintf(buffer, format, seconds/60, seconds%60);
 	    break;
@@ -790,7 +790,7 @@ void calculate_ranking_text_for_post_game(
 		case _game_of_kill_man_with_ball:
 		case _game_of_tag:
 		case _game_of_defense:
-			seconds= std::abs(ranking)/TICKS_PER_SECOND;
+			seconds= ABS(ranking)/TICKS_PER_SECOND;
 			getcstr(format, strNETWORK_GAME_STRINGS, minutesPossessedFormatString);
 			sprintf(buffer, format, seconds/60, seconds%60);
 			break;

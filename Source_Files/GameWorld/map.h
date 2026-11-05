@@ -410,13 +410,6 @@ enum /* object transfer modes (high-level) */
 	_xfer_wander,
 	_xfer_fast_wander,
 	_xfer_big_landscape,
-	_xfer_reverse_horizontal_slide,
-	_xfer_reverse_fast_horizontal_slide,
-	_xfer_reverse_vertical_slide,
-	_xfer_reverse_fast_vertical_slide,
-	_xfer_2x,				  // scales texture by 2x
-	_xfer_4x,				  // scales texture by 4x
-	
 	NUMBER_OF_TRANSFER_MODES
 };
 
@@ -1114,8 +1107,7 @@ void changed_polygon(short original_polygon_index, short new_polygon_index, shor
 short calculate_damage(struct damage_definition *damage);
 void cause_polygon_damage(short polygon_index, short monster_index);
 
-short calculate_level_completion_state();
-short calculate_classic_level_completion_state(void);
+short calculate_level_completion_state(void);
 
 /* ---------- prototypes/MAP.C */
 
@@ -1180,11 +1172,12 @@ void animate_object(short object_index); /* assumes ∂t==1 tick */
 void animate_object(object_data* data, int16_t object_index);
 bool randomize_object_sequence(short object_index, shape_descriptor shape);
 
-world_location3d* get_object_sound_location(short object_index);
-void play_object_sound(short object_index, short sound_code, bool local_sound = false);
+void play_object_sound(short object_index, short sound_code);
 void play_polygon_sound(short polygon_index, short sound_code);
-void play_side_sound(short side_index, short sound_code, _fixed pitch, bool soft_rewind = false);
+void _play_side_sound(short side_index, short sound_code, _fixed pitch);
 void play_world_sound(short polygon_index, world_point3d *origin, short sound_code);
+
+#define play_side_sound(side_index, sound_code) _play_side_sound(side_index, sound_code, FIXED_ONE)
 
 void handle_random_sound_image(void);
 
@@ -1229,7 +1222,7 @@ void recalculate_map_counts(void);
 bool change_polygon_height(short polygon_index, world_distance new_floor_height,
 	world_distance new_ceiling_height, struct damage_definition *damage);
 
-bool line_is_obstructed(short polygon_index1, world_point2d* p1, short polygon_index2, world_point2d* p2, bool for_sounds = false);
+bool line_is_obstructed(short polygon_index1, world_point2d *p1, short polygon_index2, world_point2d *p2);
 bool point_is_player_visible(short max_players, short polygon_index, world_point2d *p, int32 *distance);
 bool point_is_monster_visible(short polygon_index, world_point2d *p, int32 *distance);
 
@@ -1407,6 +1400,9 @@ bool select_map_to_use(void);
 short get_player_starting_location_and_facing(short team, short index, 
 	struct object_location *location);
 
+void pause_game(void);
+void resume_game(void);
+
 bool get_indexed_entry_point(struct entry_point *entry_point, short *index, int32 type);
 bool get_entry_points(vector<entry_point> &vec, int32 type);
 
@@ -1414,7 +1410,7 @@ bool new_game(short number_of_players, bool network,
 	struct game_data *game_information,
 	struct player_start_data *player_start_information, 
 	struct entry_point *entry_point);
-bool goto_level(struct entry_point *entry, short number_of_players, player_start_data* player_start_information);
+bool goto_level(struct entry_point *entry, bool new_game, short number_of_players);
 
 class InfoTree;
 void parse_mml_texture_loading(const InfoTree& root);

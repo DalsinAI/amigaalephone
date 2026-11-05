@@ -27,6 +27,7 @@ NETWORK_MESSAGES.CPP
 #include "AStream.h"
 #include "network_messages.h"
 #include "network_private.h"
+#include "network_data_formats.h"
 #include "Logging.h"
 
 #include <zlib.h>
@@ -53,13 +54,14 @@ static void read_string(AIStream& inputStream, char *s, size_t length) {
 
 static void deflateNetPlayer(AOStream& outputStream, const NetPlayer &player) {
 
-  outputStream.write(player.dspAddress.address_bytes().data(), 4);
-  outputStream << player.dspAddress.port();
-  outputStream.write(player.ddpAddress.address_bytes().data(), 4);
-  outputStream << player.ddpAddress.port();
+  outputStream.write((byte *) &player.dspAddress.host, 4);
+  outputStream.write((byte *) &player.dspAddress.port, 2);
+  outputStream.write((byte *) &player.ddpAddress.host, 4);
+  outputStream.write((byte *) &player.ddpAddress.port, 2);
   outputStream << player.identifier;
   outputStream << player.stream_id;
   outputStream << player.net_dead;
+
 
   write_string(outputStream, player.player_data.name);
   outputStream << player.player_data.desired_color;
@@ -71,19 +73,10 @@ static void deflateNetPlayer(AOStream& outputStream, const NetPlayer &player) {
 
 static void inflateNetPlayer(AIStream& inputStream, NetPlayer &player) {
 
-  uint16_t port;
-  uint8_t host[4];
-
-  inputStream.read(host, sizeof(host));
-  player.dspAddress.set_address(host);
-  inputStream >> port;
-  player.dspAddress.set_port(port);
-
-  inputStream.read(host, sizeof(host));
-  player.ddpAddress.set_address(host);
-  inputStream >> port;
-  player.ddpAddress.set_port(port);
-
+  inputStream.read((byte *) &player.dspAddress.host, 4);
+  inputStream.read((byte *) &player.dspAddress.port, 2);
+  inputStream.read((byte *) &player.ddpAddress.host, 4);
+  inputStream.read((byte *) &player.ddpAddress.port, 2);
   inputStream >> player.identifier;
   inputStream >> player.stream_id;
   inputStream >> player.net_dead;
@@ -103,11 +96,6 @@ bool BigChunkOfZippedDataMessage::inflateFrom(const UninflatedMessage& inUninfla
 	uint32 temp_size;
 	inputStream >> temp_size;
 	size = temp_size;
-
-	if (size > max_size) {
-		logWarning("Error decompressing BigChunkOfZippedDataMessage; %lu is too many bytes", size);
-		return false;
-	}
 
 	// extra copy because we can't access private mBuffer
 	std::vector<byte> temp(size);
@@ -266,7 +254,6 @@ void NetworkStatsMessage::reallyDeflateTo(AOStream& outputStream) const {
 		outputStream << it->latency;
 		outputStream << it->jitter;
 		outputStream << it->errors;
-		outputStream << it->pregame_state;
 	}
 }
 
@@ -277,7 +264,6 @@ bool NetworkStatsMessage::reallyInflateFrom(AIStream& inputStream) {
 		inputStream >> stats.latency;
 		inputStream >> stats.jitter;
 		inputStream >> stats.errors;
-		inputStream >> stats.pregame_state;
 
 		mStats.push_back(stats);
 	}
@@ -320,6 +306,8 @@ void TopologyMessage::reallyDeflateTo(AOStream& outputStream) const {
   outputStream << mTopology.game_data.kill_limit;
   outputStream << mTopology.game_data.game_options;
   outputStream << mTopology.game_data.difficulty_level;
+  outputStream << mTopology.game_data.server_is_playing;
+  outputStream << mTopology.game_data.allow_mic;
   outputStream << mTopology.game_data.cheat_flags;
   outputStream << mTopology.game_data.level_number;
   write_string(outputStream, mTopology.game_data.level_name);
@@ -330,20 +318,11 @@ void TopologyMessage::reallyDeflateTo(AOStream& outputStream) const {
   for (int i = 0; i < MAXIMUM_NUMBER_OF_NETWORK_PLAYERS; i++) {
     deflateNetPlayer(outputStream, mTopology.players[i]);
   }
-
-  outputStream.write(mTopology.server.dspAddress.address_bytes().data(), 4);
-  outputStream << mTopology.server.dspAddress.port();
-  outputStream.write(mTopology.server.ddpAddress.address_bytes().data(), 4);
-  outputStream << mTopology.server.ddpAddress.port();
 }
 
 bool TopologyMessage::reallyInflateFrom(AIStream& inputStream) {
   inputStream >> mTopology.tag;
   inputStream >> mTopology.player_count;
-  if (mTopology.player_count < 0 || mTopology.player_count > MAXIMUM_NUMBER_OF_NETWORK_PLAYERS) {
-	  return false;
-  }
-
   inputStream >> mTopology.nextIdentifier;
 
   inputStream >> mTopology.game_data.initial_random_seed;
@@ -352,6 +331,8 @@ bool TopologyMessage::reallyInflateFrom(AIStream& inputStream) {
   inputStream >> mTopology.game_data.kill_limit;
   inputStream >> mTopology.game_data.game_options;
   inputStream >> mTopology.game_data.difficulty_level;
+  inputStream >> mTopology.game_data.server_is_playing;
+  inputStream >> mTopology.game_data.allow_mic;
   inputStream >> mTopology.game_data.cheat_flags;
   inputStream >> mTopology.game_data.level_number;
   read_string(inputStream, mTopology.game_data.level_name, MAX_LEVEL_NAME_LENGTH - 1);
@@ -363,63 +344,7 @@ bool TopologyMessage::reallyInflateFrom(AIStream& inputStream) {
     inflateNetPlayer(inputStream, mTopology.players[i]);
   }
 
-  uint16_t port;
-  uint8_t host[4];
-
-  inputStream.read(host, sizeof(host));
-  mTopology.server.dspAddress.set_address(host);
-  inputStream >> port;
-  mTopology.server.dspAddress.set_port(port);
-
-  inputStream.read(host, sizeof(host));
-  mTopology.server.ddpAddress.set_address(host);
-  inputStream >> port;
-  mTopology.server.ddpAddress.set_port(port);
-
   return true;
-}
-
-void RemoteHubCommandMessage::reallyDeflateTo(AOStream& outputStream) const {
-
-	outputStream << (short)mCommand;
-	outputStream << mData;
-}
-
-bool RemoteHubCommandMessage::reallyInflateFrom(AIStream& inputStream) {
-	short command;
-	inputStream >> command;
-	mCommand = static_cast<RemoteHubCommand>(command);
-	inputStream >> mData;
-	return true;
-}
-
-void SynchronizationCheckMessage::reallyDeflateTo(AOStream& outputStream) const {
-	outputStream << mDynamicTickCount;
-	outputStream << mSeed;
-}
-
-bool SynchronizationCheckMessage::reallyInflateFrom(AIStream& inputStream) {
-	inputStream >> mDynamicTickCount;
-	inputStream >> mSeed;
-	return true;
-}
-
-void OutOfSynchronizationMessage::reallyDeflateTo(AOStream& outputStream) const {
-	outputStream << mPlayerIdentifier;
-}
-
-bool OutOfSynchronizationMessage::reallyInflateFrom(AIStream& inputStream) {
-	inputStream >> mPlayerIdentifier;
-	return true;
-}
-
-void RemoteHubHostResponseMessage::reallyDeflateTo(AOStream& outputStream) const {
-	outputStream << (Uint8)mAccepted;
-}
-
-bool RemoteHubHostResponseMessage::reallyInflateFrom(AIStream& inputStream) {
-	inputStream >> (Uint8&)mAccepted;
-	return true;
 }
 
 #endif // !defined(DISABLE_NETWORKING)

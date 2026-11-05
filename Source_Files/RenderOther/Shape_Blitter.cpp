@@ -125,17 +125,15 @@ void Shape_Blitter::OGL_Draw(const Image_Rect& dst)
             TMgr.TextureType = OGL_Txtr_Landscape;
             LandscapeOptions *LandOpts = View_GetLandscapeOptions(TMgr.ShapeDesc);	
             TMgr.LandscapeVertRepeat = LandOpts->VertRepeat;
-            TMgr.Landscape_AspRatExp = LandOpts->SphereMap ? 1 : LandOpts->OGL_AspRatExp;
+            TMgr.Landscape_AspRatExp = LandOpts->OGL_AspRatExp;
 	  }
             break;
         case Shape_Texture_Sprite:
             TMgr.TextureType = OGL_Txtr_Inhabitant;
             break;
         case Shape_Texture_WeaponInHand:
-			TMgr.TextureType = OGL_Txtr_WeaponsInHand;
-			break;
         case Shape_Texture_Interface:
-            TMgr.TextureType = OGL_Txtr_HUD;
+            TMgr.TextureType = OGL_Txtr_WeaponsInHand;
             break;
     }
 	if (!TMgr.Setup())
@@ -148,7 +146,7 @@ void Shape_Blitter::OGL_Draw(const Image_Rect& dst)
 	GLdouble V_Offset = TMgr.V_Offset;
     
 	// Draw shape
-	if (Wanting_sRGB && TMgr.TextureType != OGL_Txtr_WeaponsInHand && TMgr.TextureType != OGL_Txtr_HUD) // also not hud just in case
+	if (Wanting_sRGB && TMgr.TextureType != OGL_Txtr_WeaponsInHand)
 	{
 		glEnable(GL_FRAMEBUFFER_SRGB_EXT);
 		Using_sRGB = true;

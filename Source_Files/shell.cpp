@@ -39,6 +39,7 @@
 #include "vbl.h"
 #include "preferences.h"
 #include "tags.h" /* for scenario file type.. */
+#include "network_sound.h"
 #include "mouse.h"
 #include "joystick.h"
 #include "screen_drawing.h"
@@ -58,11 +59,11 @@
 #include "FileHandler.h"
 #include "Plugins.h"
 #include "FilmProfile.h"
-#include "ScenarioChooser.h"
 
 #include "mytm.h"	// mytm_initialize(), for platform-specific shell_*.h
 
 #include <stdlib.h>
+#include <string.h>
 #include <ctype.h>
 #include <vector>
 
@@ -86,7 +87,17 @@
 #include <unistd.h>
 #endif
 
+#ifdef HAVE_OPENGL
 #include "OGL_Headers.h"
+#endif
+
+#if !defined(DISABLE_NETWORKING)
+#include <SDL2/SDL_net.h>
+#endif
+
+#ifdef HAVE_PNG
+#include "IMG_savepng.h"
+#endif
 
 #ifdef HAVE_SDL_IMAGE
 #include <SDL2/SDL_image.h>
@@ -108,14 +119,16 @@
 
 #ifdef __WIN32__
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <dwmapi.h>
+#undef CreateDirectory
+#undef PlaySound
 #endif
 
 #include "shell_options.h"
 
-#ifdef HAVE_STEAM
-#include "steamshim_child.h"
-#endif
+// LP addition: whether or not the cheats are active
+// Defined in shell_misc.cpp
+extern bool CheatsActive;
 
 // Data directories
 vector <DirectorySpecifier> data_search_path; // List of directories in which data files are searched for
@@ -130,11 +143,6 @@ DirectorySpecifier recordings_dir;    // Directory for recordings (except film b
 DirectorySpecifier screenshots_dir;   // Directory for screenshots
 DirectorySpecifier log_dir;           // Directory for Aleph One Log.txt
 
-#ifdef HAVE_STEAM
-std::vector<item_subscribed_query_result::item> subscribed_workshop_items;
-steam_game_information steam_game_info;
-#endif
-
 /*
 // Command-line options
 bool option_nogl = false;             // Disable OpenGL
@@ -147,6 +155,11 @@ static bool force_fullscreen = false; // Force fullscreen mode
 static bool force_windowed = false;   // Force windowed mode
 */
 
+// Prototypes
+static void main_event_loop(void);
+extern int process_keyword_key(char key);
+extern void handle_keyword(int type_of_cheat);
+
 void PlayInterfaceButtonSound(short SoundID);
 
 // From preprocess_map_sdl.cpp
@@ -154,15 +167,31 @@ extern bool get_default_music_spec(FileSpecifier &file);
 extern bool get_default_theme_spec(FileSpecifier& file);
 
 // From vbl_sdl.cpp
-void execute_timer_tasks(uint64_t time);
+void execute_timer_tasks(uint32 time);
 
 // Prototypes
+static void initialize_application(void);
+void shutdown_application(void);
 static void initialize_marathon_music_handler(void);
 static void process_event(const SDL_Event &event);
 
 // cross-platform static variables
 short vidmasterStringSetID = -1; // can be set with MML
-short vidmasterLevelOffset = 1; // can be set with MML
+
+static bool IsCompositingWindowManagerEnabled() // double buffering
+{
+#if defined(__APPLE__) || defined(__MACH__)
+	return true;
+#endif
+
+#if defined __WIN32__
+	BOOL result;
+	if (DwmIsCompositionEnabled(&result) != S_OK) return false;
+	return result;
+#endif
+
+	return false;
+}
 
 static std::string a1_getenv(const char* name)
 {
@@ -220,12 +249,103 @@ bool handle_open_document(const std::string& filename)
 	return done;
 }
 
+
+#ifdef __amigaos__
+#include "amiga_main.h"
+#endif
+
+int main(int argc, char **argv)
+{
+#ifdef __amigaos__
+	amiga_workbench_args(&argc, &argv); // a Workbench start has argc 0
+#endif
+	// Print banner (don't bother if this doesn't appear when started from a GUI)
+	char app_name_version[256];
+	expand_app_variables(app_name_version, "Aleph One $appLongVersion$");
+	printf ("%s\n%s\n\n"
+	  "Original code by Bungie Software <http://www.bungie.com/>\n"
+	  "Additional work by Loren Petrich, Chris Pruett, Rhys Hill et al.\n"
+	  "TCP/IP networking by Woody Zenfell\n"
+	  "SDL port by Christian Bauer <Christian.Bauer@uni-mainz.de>\n"
+#if defined(__MACH__) && defined(__APPLE__)
+	  "Mac OS X/SDL version by Chris Lovell, Alexander Strange, and Woody Zenfell\n"
+#endif
+	  "\nThis is free software with ABSOLUTELY NO WARRANTY.\n"
+	  "You are welcome to redistribute it under certain conditions.\n"
+	  "For details, see the file COPYING.\n"
+#if defined(__WIN32__)
+	  // Windows is statically linked against SDL, so we have to include this:
+	  "\nSimple DirectMedia Layer (SDL) Library included under the terms of the\n"
+	  "GNU Library General Public License.\n"
+	  "For details, see the file COPYING.SDL.\n"
+#endif
+#if !defined(DISABLE_NETWORKING)
+	  "\nBuilt with network play enabled.\n"
+#endif
+#ifdef HAVE_LUA
+	  "\nBuilt with Lua scripting enabled.\n"
+#endif
+	  , app_name_version, A1_HOMEPAGE_URL
+    );
+
+	shell_options.parse(argc, argv);
+
+	auto code = 0;
+
+	try {
+		
+		// Initialize everything
+		initialize_application();
+
+		for (std::vector<std::string>::iterator it = shell_options.files.begin(); it != shell_options.files.end(); ++it)
+		{
+			if (handle_open_document(*it))
+			{
+				break;
+			}
+		}
+
+		// Run the main loop
+		main_event_loop();
+
+	} catch (std::exception &e) {
+		try 
+		{
+			logFatal("Unhandled exception: %s", e.what());
+		}
+		catch (...) 
+		{
+		}
+		code = 1;
+	} catch (...) {
+		try
+		{
+			logFatal("Unknown exception");
+		}
+		catch (...)
+		{
+		}
+		code = 1;
+	}
+
+	try
+	{
+		shutdown_application();
+	}
+	catch (...)
+	{
+
+	}
+
+	return code;
+}
+               
 static int char_is_not_filesafe(int c)
 {
     return (c != ' ' && !std::isalnum(c));
 }
 
-void initialize_application(void)
+static void initialize_application(void)
 {
 #if defined(__WIN32__)
 	if (LoadLibraryW(L"exchndl.dll")) shell_options.debug = true;
@@ -275,120 +395,18 @@ void initialize_application(void)
 		SDL_EventState(SDL_DROPFILE, SDL_DISABLE);
 	}
 
-	log_dir = get_data_path(kPathLogs);
-	initialize_joystick();
-
-	const string default_data_env = a1_getenv("ALEPHONE_DEFAULT_DATA");
-#ifndef SCENARIO_IS_BUNDLED
-	// see if there are scenarios to choose from
-	DirectorySpecifier scenario_dir(get_data_path(kPathDefaultData));
-	if (!shell_options.directory.empty())
-	{
-		scenario_dir = shell_options.directory;
-	}
-	else if (!default_data_env.empty())
-	{
-		scenario_dir = default_data_env;
-	}
-
-	ScenarioChooser chooser;
-	chooser.add_primary_scenario(scenario_dir.GetPath());
-
-#ifdef HAVE_STEAM
-	if (!STEAMSHIM_init())
-	{
-		alert_user("You must launch the Steam version of Classic Marathon using the Classic Marathon Launcher.", fatalError);
-		exit(1);
-	}
-
-	bool got_info = false, got_items = false;
-	STEAMSHIM_getGameInfo();
-	if (shell_options.editor || shell_options.no_chooser)
-	{
-		got_items = true;
-	}
-	else
-	{
-		STEAMSHIM_queryWorkshopItemScenario();
-	}
-
-	while (STEAMSHIM_alive() && (!got_info || !got_items))
-	{
-		auto result = STEAMSHIM_pump();
-
-		if (!result)
-		{
-			sleep_for_machine_ticks(30);
-			continue;
-		}
-
-		switch (result->type)
-		{
-			case SHIMEVENT_GET_GAME_INFO:
-				steam_game_info = result->game_info;
-				got_info = true;
-				break;
-			case SHIMEVENT_WORKSHOP_QUERY_ITEM_SUBSCRIBED_RESULT:
-				if (result->items_subscribed.result_code == 1)
-				{
-					for (const auto& steam_scenario : result->items_subscribed.items)
-					{
-						chooser.add_workshop_scenario(steam_scenario.install_folder_path);
-					}
-				}
-				got_items = true;
-				break;
-			default:
-				break;
-		}
-	}
-#endif // HAVE_STEAM
-
-	auto is_workshop_scenario = false;
-	if (!shell_options.editor && !shell_options.no_chooser)
-	{
-		if (chooser.num_scenarios() == 0)
-		{
-			chooser.add_directory(scenario_dir.GetPath());
-		}
-		else
-		{
-			chooser.add_directory((scenario_dir + "Scenarios").GetPath());
-		}
-		
-		if (chooser.num_scenarios() > 1)
-		{
-			std::string chosen_path;
-			std::tie(chosen_path, is_workshop_scenario) = chooser.run();
-			
-			// ugh
-			shell_options.directory = chosen_path;
-		}
-	}
-#endif
-
 	// Find data directories, construct search path
 	InitDefaultStringSets();
-	
+
 #ifndef SCENARIO_IS_BUNDLED
 	default_data_dir = get_data_path(kPathDefaultData);
 #endif
 	
 	local_data_dir = get_data_path(kPathLocalData);
+	log_dir = get_data_path(kPathLogs);
 	preferences_dir = get_data_path(kPathPreferences);
 	saved_games_dir = get_data_path(kPathSavedGames);
 	quick_saves_dir = get_data_path(kPathQuickSaves);
-
-#ifdef HAVE_STEAM
-	if (is_workshop_scenario)
-	{
-		quick_saves_dir += "Marathon Infinity";
-		quick_saves_dir.MakeDirectory();
-		quick_saves_dir += "Workshop";
-		quick_saves_dir.MakeDirectory();
-	}
-#endif
-	
 	image_cache_dir = get_data_path(kPathImageCache);
 	recordings_dir = get_data_path(kPathRecordings);
 	screenshots_dir = get_data_path(kPathScreenshots);
@@ -403,6 +421,7 @@ void initialize_application(void)
 	size_t dsp_insert_pos = data_search_path.size();
 	size_t dsp_delete_pos = (size_t)-1;
 	
+	const string default_data_env = a1_getenv("ALEPHONE_DEFAULT_DATA");
 	if (shell_options.directory != "")
 	{
 		default_data_dir = shell_options.directory;
@@ -450,10 +469,10 @@ void initialize_application(void)
 	init_physics_wad_data();
 	initialize_fonts(false);
 
-	load_film_profile(FILM_PROFILE_DEFAULT);
+	load_film_profile(FILM_PROFILE_DEFAULT, false);
 
 	// Parse MML files
-	LoadBaseMMLScripts(true);
+	LoadBaseMMLScripts();
 
 	// Check for presence of strings
 	if (!TS_IsPresent(strERRORS) || !TS_IsPresent(strFILENAMES)) {
@@ -474,50 +493,23 @@ void initialize_application(void)
 			
 			// Parse MML files again, now that we have a new dir to search
 			initialize_fonts(false);
-			LoadBaseMMLScripts(true);
+			LoadBaseMMLScripts();
 		}
 	}
-
-#ifdef HAVE_STEAM
-	STEAMSHIM_queryWorkshopItemMod(Scenario::instance()->GetName());
-
-	while (STEAMSHIM_alive())
-	{
-		auto result = STEAMSHIM_pump();
-
-		if (!result)
-		{
-			sleep_for_machine_ticks(30);
-			continue;
-		}
-
-		if (result->type == SHIMEVENT_WORKSHOP_QUERY_ITEM_SUBSCRIBED_RESULT)
-		{
-			if (result->items_subscribed.result_code == 1)
-			{
-				for (const auto& item : result->items_subscribed.items)
-					{
-						subscribed_workshop_items.push_back(item);
-					}
-			}
-			break;
-		}
-	}
-#endif
 
 	initialize_fonts(true);
 	Plugins::instance()->enumerate();			
 	
-	preferences_dir.MakeDirectory();
+	preferences_dir.CreateDirectory();
 	if (!get_data_path(kPathLegacyPreferences).empty())
 		transition_preferences(DirectorySpecifier(get_data_path(kPathLegacyPreferences)));
 
 	// Load preferences
 	initialize_preferences();
 
-	local_data_dir.MakeDirectory();
-	saved_games_dir.MakeDirectory();
-	quick_saves_dir.MakeDirectory();
+	local_data_dir.CreateDirectory();
+	saved_games_dir.CreateDirectory();
+	quick_saves_dir.CreateDirectory();
 	{
 		std::string scen = Scenario::instance()->GetName();
 		if (scen.length())
@@ -525,32 +517,40 @@ void initialize_application(void)
 		if (!scen.length())
 			scen = "Unknown";
 		quick_saves_dir += scen;
-		quick_saves_dir.MakeDirectory();
+		quick_saves_dir.CreateDirectory();
 	}
-	image_cache_dir.MakeDirectory();
-	recordings_dir.MakeDirectory();
-	screenshots_dir.MakeDirectory();
+	image_cache_dir.CreateDirectory();
+	recordings_dir.CreateDirectory();
+	screenshots_dir.CreateDirectory();
 	
 	WadImageCache::instance()->initialize_cache();
 
 #ifndef HAVE_OPENGL
 	graphics_preferences->screen_mode.acceleration = _no_acceleration;
 #endif
-	if (shell_options.nogl)
-		graphics_preferences->screen_mode.acceleration = _no_acceleration;
 	if (shell_options.force_fullscreen)
 		graphics_preferences->screen_mode.fullscreen = true;
 	if (shell_options.force_windowed)		// takes precedence over fullscreen because windowed is safer
 		graphics_preferences->screen_mode.fullscreen = false;
 	write_preferences();
 
-	Plugins::instance()->load_mml(true);
+	Plugins::instance()->load_mml();
 
 //	SDL_WM_SetCaption(application_name, application_name);
 
 // #if defined(HAVE_SDL_IMAGE) && !(defined(__APPLE__) && defined(__MACH__))
 // 	SDL_WM_SetIcon(IMG_ReadXPMFromArray(const_cast<char**>(alephone_xpm)), 0);
 // #endif
+
+#if !defined(DISABLE_NETWORKING)
+	if (SDLNet_Init() < 0)
+	{
+		std::ostringstream oss;
+		oss << "Couldn't initialize SDL_net (" << SDLNet_GetError() << ")";
+
+		throw std::runtime_error(oss.str());
+	}
+#endif
 
 	if (TTF_Init() < 0)
 	{
@@ -568,6 +568,7 @@ void initialize_application(void)
 	SoundManager::instance()->Initialize(*sound_preferences);
 	initialize_marathon_music_handler();
 	initialize_keyboard_controller();
+	initialize_joystick();
 	initialize_gamma();
 	alephone::Screen::instance()->Initialize(&graphics_preferences->screen_mode);
 	initialize_marathon();
@@ -584,19 +585,18 @@ void initialize_application(void)
 void shutdown_application(void)
 {
 	WadImageCache::instance()->save_cache();
+	close_external_resources();
 
 	shutdown_dialogs();
         
-#if defined(HAVE_SDL_IMAGE)
+#if defined(HAVE_SDL_IMAGE) && (SDL_IMAGE_PATCHLEVEL >= 8)
 	IMG_Quit();
 #endif
-
+#if !defined(DISABLE_NETWORKING)
+	SDLNet_Quit();
+#endif
 	TTF_Quit();
 	SDL_Quit();
-
-#ifdef HAVE_STEAM
-	STEAMSHIM_deinit();
-#endif
 }
 
 bool networking_available(void)
@@ -613,6 +613,24 @@ static void initialize_marathon_music_handler(void)
 	FileSpecifier file;
 	if (get_default_music_spec(file))
 		Music::instance()->SetupIntroMusic(file);
+}
+
+bool quit_without_saving(void)
+{
+	dialog d;
+	vertical_placer *placer = new vertical_placer;
+	placer->dual_add (new w_static_text("Are you sure you wish to"), d);
+	placer->dual_add (new w_static_text("cancel the game in progress?"), d);
+	placer->add (new w_spacer(), true);
+	
+	horizontal_placer *button_placer = new horizontal_placer;
+	w_button *default_button = new w_button("YES", dialog_ok, &d);
+	button_placer->dual_add (default_button, d);
+	button_placer->dual_add (new w_button("NO", dialog_cancel, &d), d);
+	d.activate_widget(default_button);
+	placer->add(button_placer, true);
+	d.set_widget_placer(placer);
+	return d.run() == 0;
 }
 
 // ZZZ: moved level-numbers widget into sdl_widgets for a wider audience.
@@ -669,7 +687,6 @@ short get_level_number_from_user(void)
 	placer->dual_add(new w_static_text("Start at level:"), d);
 
 	w_levels *level_w = new w_levels(levels, &d);
-	level_w->set_offset(vidmasterLevelOffset);
 	placer->dual_add(level_w, d);
 	placer->add(new w_spacer(), true);
 	placer->dual_add(new w_button("CANCEL", dialog_cancel, &d), d);
@@ -691,20 +708,20 @@ short get_level_number_from_user(void)
 }
 
 const uint32 TICKS_BETWEEN_EVENT_POLL = 16; // 60 Hz
-void main_event_loop(void)
+static void main_event_loop(void)
 {
 	uint32 last_event_poll = 0;
 	short game_state;
 
 	while ((game_state = get_game_state()) != _quit_game) {
-		uint64_t cur_time = machine_tick_count();
+		uint32 cur_time = machine_tick_count();
 		bool yield_time = false;
 		bool poll_event = false;
 
 		switch (game_state) {
 			case _game_in_progress:
 			case _change_level:
-				if ((get_fps_target() == 0 && get_keyboard_controller_status()) || Console::instance()->input_active() || cur_time - last_event_poll >= TICKS_BETWEEN_EVENT_POLL) {
+				if (get_fps_target() == 0 || Console::instance()->input_active() || cur_time - last_event_poll >= TICKS_BETWEEN_EVENT_POLL) {
 					poll_event = true;
 					last_event_poll = cur_time;
 			  } else {				  
@@ -736,74 +753,35 @@ void main_event_loop(void)
 		if (poll_event) {
 			global_idle_proc();
 
-			if (!(ingame_dialog_active() && game_state == _game_in_progress))
+			SDL_Event event;
+			if (yield_time)
 			{
-				
-				SDL_Event event;
-				if (yield_time)
-				{
-					// The game is not in a "hot" state, yield time to other
-					// processes but only try for a maximum of 30ms
-					if (SDL_WaitEventTimeout(&event, 30))
-					{
-						process_event(event);
-					}
-				}
-				
-				while (SDL_PollEvent(&event))
+				// The game is not in a "hot" state, yield time to other
+				// processes but only try for a maximum of 30ms
+				if (SDL_WaitEventTimeout(&event, 30))
 				{
 					process_event(event);
 				}
 			}
 
-#ifdef HAVE_STEAM
-			while (auto steam_event = STEAMSHIM_pump()) {
-				switch (steam_event->type) {
-					case SHIMEVENT_IS_OVERLAY_ACTIVATED:
-						if (steam_event->okay && get_game_state() == _game_in_progress && !game_is_networked)
-						{
-							pause_game();
-						}
-						break;
-
-					default:
-						break;
-				}
+			while (SDL_PollEvent(&event))
+			{
+				process_event(event);
 			}
-#endif
 		}
-
 
 		execute_timer_tasks(machine_tick_count());
 		idle_game_state(machine_tick_count());
-		if (ingame_dialog_active() && game_state == _game_in_progress)
-		{
-			ingame_dialog_poll();
-		}
 
-		auto fps_target = get_fps_target();
-		if (!get_keyboard_controller_status())
-		{
-			fps_target = 30;
-		}
-	
-		if (game_state == _game_in_progress && fps_target != 0)
+		if (game_state == _game_in_progress &&
+			get_fps_target() != 0)
 		{
 			int elapsed_machine_ticks = machine_tick_count() - cur_time;
-			int desired_elapsed_machine_ticks = MACHINE_TICKS_PER_SECOND / fps_target;
+			int desired_elapsed_machine_ticks = MACHINE_TICKS_PER_SECOND / get_fps_target();
 
 			if (desired_elapsed_machine_ticks - elapsed_machine_ticks > desired_elapsed_machine_ticks / 3)
 			{
 				sleep_for_machine_ticks(1);
-			}
-		}
-		else if (game_state != _game_in_progress)
-		{
-			static uint64_t last_redraw = 0U;
-			if (machine_tick_count() > last_redraw + TICKS_PER_SECOND / 30)
-			{
-				update_game_window();
-				last_redraw = machine_tick_count();
 			}
 		}
 	}
@@ -844,6 +822,11 @@ static void handle_game_key(const SDL_Event &event)
 	bool changed_prefs = false;
 	bool changed_resolution = false;
 
+	if (!game_is_networked && (event.key.keysym.mod & KMOD_CTRL) && CheatsActive) {
+		int type_of_cheat = process_keyword_key(key);
+		if (type_of_cheat != NONE)
+			handle_keyword(type_of_cheat);
+	}
 	if (Console::instance()->input_active()) {
 		switch(key) {
 			case SDLK_RETURN:
@@ -931,9 +914,21 @@ static void handle_game_key(const SDL_Event &event)
 	{
 		if (sc == SDL_SCANCODE_ESCAPE || sc == AO_SCANCODE_JOYSTICK_ESCAPE) // (ZZZ) Quit gesture (now safer)
 		{
-			if (!player_controlling_game() || get_ticks_since_local_player_in_terminal() > 1 * TICKS_PER_SECOND)
-			{
-				do_menu_item_command(mGame, iGameMenu, false);
+			if(!player_controlling_game())
+				do_menu_item_command(mGame, iQuitGame, false);
+			else {
+				if(get_ticks_since_local_player_in_terminal() > 1 * TICKS_PER_SECOND) {
+					if(!game_is_networked) {
+						do_menu_item_command(mGame, iQuitGame, false);
+					}
+					else {
+#if defined(__APPLE__) && defined(__MACH__)
+						screen_printf("If you wish to quit, press Command-Q");
+#else
+						screen_printf("If you wish to quit, press Alt+Q.");
+#endif
+					}
+				}
 			}
 		}
 		else if (input_preferences->shell_key_bindings[_key_volume_up].count(sc))
@@ -1124,11 +1119,7 @@ static void handle_game_key(const SDL_Event &event)
 				ShowPosition = !ShowPosition;
 			}
 		}
-		else if (sc == SDL_SCANCODE_F11
-#ifdef HAVE_STEAM
-				 && (event.key.keysym.mod & KMOD_SHIFT)
-#endif
-				 ) // Decrease gamma level
+		else if (sc == SDL_SCANCODE_F11) // Decrease gamma level
 		{
 			if (graphics_preferences->screen_mode.gamma_level) {
 				PlayInterfaceButtonSound(Sound_ButtonSuccess());
@@ -1138,11 +1129,7 @@ static void handle_game_key(const SDL_Event &event)
 			} else
 				PlayInterfaceButtonSound(Sound_ButtonFailure());
 		}
-		else if (sc == SDL_SCANCODE_F12
-#ifdef HAVE_STEAM
-				 && (event.key.keysym.mod & KMOD_SHIFT)
-#endif
-				 ) // Increase gamma level
+		else if (sc == SDL_SCANCODE_F12) // Increase gamma level
 		{
 			if (graphics_preferences->screen_mode.gamma_level < NUMBER_OF_GAMMA_LEVELS - 1) {
 				PlayInterfaceButtonSound(Sound_ButtonSuccess());
@@ -1351,9 +1338,11 @@ static void process_event(const SDL_Event &event)
 	case SDL_MOUSEBUTTONDOWN:
 		if (get_game_state() == _game_in_progress) 
 		{
-			if (!get_keyboard_controller_status() && !ingame_dialog_active())
+			if (!get_keyboard_controller_status())
 			{
-				resume_game();
+				hide_cursor();
+				validate_world_window();
+				set_keyboard_controller_status(true);
 			}
 			else
 			{
@@ -1370,20 +1359,13 @@ static void process_event(const SDL_Event &event)
 		break;
 	
 	case SDL_CONTROLLERBUTTONDOWN:
-		if (get_game_state() == _game_in_progress && !get_keyboard_controller_status())
-		{
-			resume_game();
-		}
-		else
-		{
-			joystick_button_pressed(event.cbutton.which, event.cbutton.button, true);
-			SDL_Event e2;
-			memset(&e2, 0, sizeof(SDL_Event));
-			e2.type = SDL_KEYDOWN;
-			e2.key.keysym.sym = SDLK_UNKNOWN;
-			e2.key.keysym.scancode = (SDL_Scancode)(AO_SCANCODE_BASE_JOYSTICK_BUTTON + event.cbutton.button);
-			process_game_key(e2);
-		}
+		joystick_button_pressed(event.cbutton.which, event.cbutton.button, true);
+		SDL_Event e2;
+		memset(&e2, 0, sizeof(SDL_Event));
+		e2.type = SDL_KEYDOWN;
+		e2.key.keysym.sym = SDLK_UNKNOWN;
+		e2.key.keysym.scancode = (SDL_Scancode)(AO_SCANCODE_BASE_JOYSTICK_BUTTON + event.cbutton.button);
+		process_game_key(e2);
 		break;
 		
 	case SDL_CONTROLLERBUTTONUP:
@@ -1399,8 +1381,7 @@ static void process_event(const SDL_Event &event)
 		break;
 			
 	case SDL_JOYDEVICEREMOVED:
-		if (joystick_removed(event.jdevice.which) && get_game_state() == _game_in_progress)
-			pause_game();
+		joystick_removed(event.jdevice.which);
 		break;
 			
 	case SDL_KEYDOWN:
@@ -1423,15 +1404,15 @@ static void process_event(const SDL_Event &event)
 	case SDL_WINDOWEVENT:
 		switch (event.window.event) {
 			case SDL_WINDOWEVENT_FOCUS_LOST:
-				if (get_game_state() == _game_in_progress && get_keyboard_controller_status() && !Movie::instance()->IsRecording() && shell_options.replay_directory.empty()) {
-					pause_game();
+				if (get_game_state() == _game_in_progress && get_keyboard_controller_status() && !Movie::instance()->IsRecording()) {
+					darken_world_window();
+					set_keyboard_controller_status(false);
+					show_cursor();
 				}
-
-				set_game_focus_lost();
 				break;
-			case SDL_WINDOWEVENT_FOCUS_GAINED:
 #if (defined(__APPLE__) && defined(__MACH__))
-    			// work around Mojave issue
+			// work around Mojave issue
+			case SDL_WINDOWEVENT_FOCUS_GAINED:
 				static bool gFirstWindow = true;
 				if (gFirstWindow) {
 					gFirstWindow = false;
@@ -1446,14 +1427,34 @@ static void process_event(const SDL_Event &event)
 						SDL_DestroyWindow(w2);
 					}
 				}
+				break;
 #endif
-				set_game_focus_gained();
+			case SDL_WINDOWEVENT_EXPOSED:
+				if (Movie::instance()->IsRecording())
+				{
+					// movie recording reads back from the frame buffer so
+					// leave it alone
+					break;
+				}
+	
+			if (!IsCompositingWindowManagerEnabled()) {
+#ifdef HAVE_OPENGL
+				if (MainScreenIsOpenGL())
+					MainScreenSwap();
+				else
+#endif
+					update_game_window();
+				}
 				break;
 		}
 		break;
 	}
 	
 }
+
+#ifdef HAVE_PNG
+extern view_data *world_view;
+#endif
 
 std::string to_alnum(const std::string& input)
 {
@@ -1477,7 +1478,7 @@ void dump_screen(void)
 	do {
 		char name[256];
 		const char* suffix;
-#if defined (HAVE_SDL_IMAGE) && defined (HAVE_PNG)
+#ifdef HAVE_PNG
 		suffix = "png";
 #else
 		suffix = "bmp";
@@ -1495,9 +1496,65 @@ void dump_screen(void)
 		i++;
 	} while (file.Exists());
 
+#ifdef HAVE_PNG
+	// build some nice metadata
+	std::vector<IMG_PNG_text> texts;
+	std::map<std::string, std::string> metadata;
+
+	metadata["Source"] = expand_app_variables("$appName$ $appVersion$ ($appPlatform$)");
+
+	time_t rawtime;
+	time(&rawtime);
+	
+	char time_string[32];
+	strftime(time_string, 32,"%d %b %Y %H:%M:%S +0000", gmtime(&rawtime));
+	metadata["Creation Time"] = time_string;
+
+	if (get_game_state() == _game_in_progress)
+	{
+		const float FLOAT_WORLD_ONE = float(WORLD_ONE);
+		const float AngleConvert = 360/float(FULL_CIRCLE);
+
+		metadata["Level"] = static_world->level_name;
+
+		char map_file_name[256];
+		FileSpecifier fs = environment_preferences->map_file;
+		fs.GetName(map_file_name);
+		metadata["Map File"] = map_file_name;
+
+		if (Scenario::instance()->GetName().size())
+		{
+			metadata["Scenario"] = Scenario::instance()->GetName();
+		}
+
+		metadata["Polygon"] = std::to_string(world_view->origin_polygon_index);
+		metadata["X"] = std::to_string(world_view->origin.x / FLOAT_WORLD_ONE);
+		metadata["Y"] = std::to_string(world_view->origin.y / FLOAT_WORLD_ONE);
+		metadata["Z"] = std::to_string(world_view->origin.z / FLOAT_WORLD_ONE);
+		metadata["Yaw"] = std::to_string(world_view->yaw * AngleConvert);
+
+
+		short pitch = world_view->pitch;
+		if (pitch > HALF_CIRCLE) pitch -= HALF_CIRCLE;
+		metadata["Pitch"] = std::to_string(pitch * AngleConvert);
+	}
+
+	for (std::map<std::string, std::string>::const_iterator it = metadata.begin(); it != metadata.end(); ++it)
+	{
+		IMG_PNG_text text;
+		text.key = const_cast<char*>(it->first.c_str());
+		text.value = const_cast<char*>(it->second.c_str());
+		texts.push_back(text);
+	}
+
+	IMG_PNG_text* textp = texts.size() ? &texts[0] : 0;
+#endif
+
 	// Without OpenGL, dumping the screen is easy
 	if (!MainScreenIsOpenGL()) {
-#if defined (HAVE_SDL_IMAGE) && defined (HAVE_PNG)
+//#ifdef HAVE_PNG
+//		aoIMG_SavePNG(file.GetPath(), MainScreenSurface(), IMG_COMPRESS_DEFAULT, textp, texts.size());
+#ifdef HAVE_SDL_IMAGE
 		IMG_SavePNG(MainScreenSurface(), file.GetPath());
 #else
 		SDL_SaveBMP(MainScreenSurface(), file.GetPath());
@@ -1537,7 +1594,9 @@ void dump_screen(void)
 	free(pixels);
 
 	// Save surface
-#if defined (HAVE_SDL_IMAGE) && defined (HAVE_PNG)
+//#ifdef HAVE_PNG
+//        aoIMG_SavePNG(file.GetPath(), t, IMG_COMPRESS_DEFAULT, textp, texts.size());
+#ifdef HAVE_SDL_IMAGE
 	IMG_SavePNG(t, file.GetPath());
 #else
 	SDL_SaveBMP(t, file.GetPath());
@@ -1546,7 +1605,7 @@ void dump_screen(void)
 #endif
 }
 
-static bool _ParseMMLDirectory(DirectorySpecifier& dir, bool load_menu_mml_only)
+static bool _ParseMMLDirectory(DirectorySpecifier& dir)
 {
 	// Get sorted list of files in directory
 	vector<dir_entry> de;
@@ -1569,20 +1628,20 @@ static bool _ParseMMLDirectory(DirectorySpecifier& dir, bool load_menu_mml_only)
 		FileSpecifier file_name = dir + i->name;
 		
 		// Parse file
-		ParseMMLFromFile(file_name, load_menu_mml_only);
+		ParseMMLFromFile(file_name);
 	}
 	
 	return true;
 }
 
-void LoadBaseMMLScripts(bool load_menu_mml_only)
+void LoadBaseMMLScripts()
 {
 	vector <DirectorySpecifier>::const_iterator i = data_search_path.begin(), end = data_search_path.end();
 	while (i != end) {
 		DirectorySpecifier path = *i + "MML";
-		_ParseMMLDirectory(path, load_menu_mml_only);
+		_ParseMMLDirectory(path);
 		path = *i + "Scripts";
-		_ParseMMLDirectory(path, load_menu_mml_only);
+		_ParseMMLDirectory(path);
 		i++;
 	}
 }
@@ -1636,8 +1695,8 @@ char *contract_symbolic_paths(char *dest, const char *src, int maxlen)
 #if defined(HAVE_BUNDLE_NAME)
 		contract_symbolic_paths_helper(dest, src, maxlen, "$bundle$", bundle_data_dir) ||
 #endif
-		contract_symbolic_paths_helper(dest, src, maxlen, "$default$", default_data_dir) || //default first in case user installed his game in his local data dir
-		contract_symbolic_paths_helper(dest, src, maxlen, "$local$", local_data_dir);
+		contract_symbolic_paths_helper(dest, src, maxlen, "$local$", local_data_dir) ||
+		contract_symbolic_paths_helper(dest, src, maxlen, "$default$", default_data_dir);
 	if (!contracted)
 	{
 		strncpy(dest, src, maxlen);

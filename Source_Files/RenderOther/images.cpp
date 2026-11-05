@@ -61,7 +61,6 @@ Jul 31, 2002 (Loren Petrich)
 #include "OGL_Render.h"
 #include "OGL_Blitter.h"
 #include "screen_definitions.h"
-#include "Plugins.h"
 
 
 // Constants
@@ -873,6 +872,7 @@ static void draw_picture_surface(std::shared_ptr<SDL_Surface> s)
 	
 	SDL_BlitSurface(s.get(), &src_rect, video, &dst_rect);
 	_restore_port();
+	draw_intro_screen();
 }
 
 static void draw_picture(LoadedResource &rsrc)
@@ -942,7 +942,7 @@ void scroll_full_screen_pict_resource_from_scenario(int pict_resource_number, bo
 
 		// Scroll loop
 		bool done = false, aborted = false;
-		uint64_t start_tick = machine_tick_count();
+		uint32 start_tick = machine_tick_count();
 		do {
 
 			int32 delta = (machine_tick_count() - start_tick) / (text_block ? (2 * SCROLLING_SPEED) : SCROLLING_SPEED);
@@ -1418,27 +1418,12 @@ void draw_full_screen_pict_resource_from_images(int pict_resource_number)
 
 bool get_picture_resource_from_scenario(int base_resource, LoadedResource &PictRsrc)
 {
-	bool found = false;
-
-	if (!found && ScenarioFile.is_open())
-	{
-		auto id = ScenarioFile.determine_pict_resource_id(base_resource, _scenario_file_delta16, _scenario_file_delta32);
-		found = Plugins::instance()->get_resource(FOUR_CHARS_TO_INT('P','I','C','T'), id, PictRsrc);
-		if (!found)
-		{
-			found = ScenarioFile.get_pict(ScenarioFile.determine_pict_resource_id(base_resource, _scenario_file_delta16, _scenario_file_delta32), PictRsrc);
-		}
-	}
-	
+    bool found = false;
+    
+    if (!found && ScenarioFile.is_open())
+        found = ScenarioFile.get_pict(ScenarioFile.determine_pict_resource_id(base_resource, _scenario_file_delta16, _scenario_file_delta32), PictRsrc);
     if (!found && ShapesImagesFile.is_open())
-	{
-		found = Plugins::instance()->get_resource(FOUR_CHARS_TO_INT('P','I','C','T'), base_resource, PictRsrc);
-
-		if (!found)
-		{
-			found = ShapesImagesFile.get_pict(base_resource, PictRsrc);
-		}
-	}
+        found = ShapesImagesFile.get_pict(base_resource, PictRsrc);
     
     return found;
 }
@@ -1463,27 +1448,13 @@ void draw_full_screen_pict_resource_from_scenario(int pict_resource_number)
 
 bool get_sound_resource_from_scenario(int resource_number, LoadedResource &SoundRsrc)
 {
-	bool found = false;
+    bool found = false;
     
     if (!found && ScenarioFile.is_open())
-	{
-		found = Plugins::instance()->get_resource(FOUR_CHARS_TO_INT('s','n','d',' '), resource_number, SoundRsrc);
-		if (!found)
-		{
-			found = ScenarioFile.get_snd(resource_number, SoundRsrc);
-		}
-	}
-	
+        found = ScenarioFile.get_snd(resource_number, SoundRsrc);
     if (!found && SoundsImagesFile.is_open())
-	{
         // Marathon 1 case: only one sound used for chapter screens
-		found = Plugins::instance()->get_resource(FOUR_CHARS_TO_INT('s','n','d', ' '), 1240, SoundRsrc);
-
-		if (!found)
-		{
-			found = SoundsImagesFile.get_snd(1240, SoundRsrc);
-		}
-	}
+        found = SoundsImagesFile.get_snd(1240, SoundRsrc);
     
     return found;
 }
@@ -1496,13 +1467,7 @@ bool get_text_resource_from_scenario(int resource_number, LoadedResource &TextRs
 	if (!ScenarioFile.is_open())
 		return false;
 
-	auto success = Plugins::instance()->get_resource(FOUR_CHARS_TO_INT('T','E','X','T'), resource_number, TextRsrc);
-
-	if (!success)
-	{
-		success = ScenarioFile.get_text(resource_number, TextRsrc);
-	}
-	
+	bool success = ScenarioFile.get_text(resource_number, TextRsrc);
 	return success;
 }
 
@@ -1762,47 +1727,4 @@ bool image_file_t::make_rsrc_from_clut(void *data, size_t length, LoadedResource
 
 	rsrc.SetData(clut_rsrc, output_length);
 	return true;
-}
-
-std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)> find_title_screen(FileSpecifier& file)
-{
-	image_file_t image_file;
-	if (image_file.open_file(file))
-	{
-		for (auto i = 2; i >= 0; --i)
-		{
-			LoadedResource title_screen;
-			if (image_file.get_pict(INTRO_SCREEN_BASE + i + _images_file_delta32, title_screen))
-			{
-				return picture_to_surface(title_screen);
-			}
-			
-			if (image_file.get_pict(INTRO_SCREEN_BASE + i + _images_file_delta16, title_screen))
-			{
-				return picture_to_surface(title_screen);
-			}
-			
-			if (image_file.get_pict(INTRO_SCREEN_BASE + i, title_screen))
-			{
-				return picture_to_surface(title_screen);
-			}
-		}
-	}
-
-	return std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)>(nullptr, SDL_FreeSurface);
-}
-
-std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)> find_m1_title_screen(FileSpecifier& file)
-{
-	image_file_t shapes_file;
-	if (shapes_file.open_file(file))
-	{
-		LoadedResource title_screen;
-		if (shapes_file.get_pict(1114, title_screen))
-		{
-			return picture_to_surface(title_screen);
-		}
-	}
-
-	return std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)>(nullptr, SDL_FreeSurface);
 }

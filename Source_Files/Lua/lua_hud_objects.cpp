@@ -49,12 +49,12 @@ LUA_HUD_OBJECTS.CPP
 #include "collection_definition.h"
 #include "FileHandler.h"
 #include "Crosshairs.h"
-#include "OGL_Textures.h"
-#include "OGL_Setup.h"
 
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+
+#ifdef HAVE_LUA
 
 extern struct view_data *world_view;
 
@@ -410,15 +410,12 @@ int Lua_Images_New(lua_State *L)
     {
         int resource_id = lua_tointeger(L, -1);
 
-		// blitter from image
-#ifdef HAVE_OPENGL
-		Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
-			? new OGL_Blitter(TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter)
-			: new Image_Blitter();
+        // blitter from image
+#ifdef HAVE_OPENGL	
+        Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration) ? new OGL_Blitter() : new Image_Blitter();
 #else
-		Image_Blitter *blitter = new Image_Blitter();
+        Image_Blitter *blitter = new Image_Blitter();
 #endif
-
         if (!blitter->Load(resource_id))
         {
             lua_pushnil(L);
@@ -506,13 +503,11 @@ int Lua_Images_New(lua_State *L)
 	}
 	
 	// blitter from image
-#ifdef HAVE_OPENGL
-	Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
-		? new OGL_Blitter()
-		: new Image_Blitter();
+#ifdef HAVE_OPENGL	
+        Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration) ? new OGL_Blitter() : new Image_Blitter();
 #else
-	Image_Blitter *blitter = new Image_Blitter();
-#endif
+        Image_Blitter *blitter = new Image_Blitter();
+#endif	
 	if (!blitter->Load(image))
 	{
 		lua_pushnil(L);
@@ -964,16 +959,14 @@ int Lua_Fonts_New(lua_State *L)
 	std::unique_ptr<ScopedSearchPath> ssp;
 	if (search_path.size())
 	{
-		ssp = std::make_unique<ScopedSearchPath>(DirectorySpecifier(search_path));
+		ssp.reset(new ScopedSearchPath(DirectorySpecifier(search_path)));
 	}
 
 	FontSpecifier *ff = new FontSpecifier(f);
 	ff->Init();
 #ifdef HAVE_OPENGL	
-	if (alephone::Screen::instance()->openGL()) {
-		ff->NearFilter = TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter;
+	if (alephone::Screen::instance()->openGL())
 		ff->OGL_Reset(true);
-	}
 #endif	
 	if (ff->LineSpacing <= 0)
 	{
@@ -2086,7 +2079,8 @@ static int Lua_HUDPlayer_Get_Velocity(lua_State *L)
 
 static int Lua_HUDPlayer_Get_Microphone(lua_State *L)
 {    
-    lua_pushboolean(L, false);
+    lua_pushboolean(L, current_netgame_allows_microphone() &&
+                    (dynamic_world->speaking_player_index == local_player_index));
 	return 1;
 }
 
@@ -2150,12 +2144,6 @@ static int Lua_HUDPlayer_Get_Texture_Palette(lua_State *L)
     return 1;
 }
 
-static int Lua_HUDPlayer_Get_Run_Key(lua_State* L)
-{
-	lua_pushboolean(L, current_player->run_key);
-	return 1;
-}
-
 const luaL_Reg Lua_HUDPlayer_Get[] = {
 {"color", Lua_HUDPlayer_Get_Color},
 {"dead", Lua_HUDPlayer_Get_Dead},
@@ -2178,7 +2166,6 @@ const luaL_Reg Lua_HUDPlayer_Get[] = {
 {"zoom_active", Lua_HUDPlayer_Get_Zoom},
 {"texture_palette", Lua_HUDPlayer_Get_Texture_Palette},
 {"respawn_duration", Lua_HUDPlayer_Get_Respawn_Duration},
-{"run_key", Lua_HUDPlayer_Get_Run_Key},
 {0, 0}
 };
 
@@ -2527,7 +2514,7 @@ static int Lua_Screen_FOV_Get_Horizontal(lua_State *L)
 	float factor = 1.0f;
 	if (get_screen_mode()->acceleration == _opengl_acceleration)
 		factor = 1.3f;
-    lua_pushnumber(L, world_view->half_cone * 360.f / NUMBER_OF_ANGLES * 2.0f / factor);
+    lua_pushnumber(L, world_view->half_cone * 2.0f / factor);
     return 1;
 }
 
@@ -2536,7 +2523,7 @@ static int Lua_Screen_FOV_Get_Vertical(lua_State *L)
 	float factor = 1.0f;
 	if (get_screen_mode()->acceleration == _opengl_acceleration)
 		factor = 1.3f;
-    lua_pushnumber(L, world_view->half_vertical_cone * 360.f / NUMBER_OF_ANGLES * 2.0f / factor);
+    lua_pushnumber(L, world_view->half_vertical_cone * 2.0f / factor);
     return 1;
 }
 
@@ -2895,13 +2882,6 @@ static int Lua_HUDGame_Get_Ticks(lua_State *L)
 	return 1;
 }
 
-extern float last_heartbeat_fraction;
-static int Lua_HUDGame_Get_Interpolated_Ticks(lua_State *L)
-{
-	lua_pushnumber(L, last_heartbeat_fraction + static_cast<float>(dynamic_world->tick_count));
-	return 1;
-}
-
 static int Lua_HUDGame_Get_Type(lua_State *L)
 {
 	Lua_GameType::Push(L, GET_GAME_TYPE());
@@ -2930,7 +2910,6 @@ const luaL_Reg Lua_HUDGame_Get[] = {
 {"time_remaining", Lua_HUDGame_Get_Time_Remaining},
 {"scoring_mode", Lua_HUDGame_Get_Scoring_Mode},
 {"ticks", Lua_HUDGame_Get_Ticks},
-{"interpolated_ticks", Lua_HUDGame_Get_Interpolated_Ticks},
 {"type", Lua_HUDGame_Get_Type},
 {"version", Lua_HUDGame_Get_Version},
 {"players", Lua_HUDGame_Get_Players},
@@ -3418,3 +3397,5 @@ int Lua_HUDObjects_register(lua_State *L)
 	
 	return 0;
 }
+
+#endif

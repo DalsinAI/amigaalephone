@@ -515,11 +515,9 @@ void initialize_terminal_manager(
 	void)
 {
 	player_terminals= new player_terminal_data[MAXIMUM_NUMBER_OF_PLAYERS];
+	assert(player_terminals);
 	objlist_clear(player_terminals, MAXIMUM_NUMBER_OF_PLAYERS);
-	for (auto i = 0; i < MAXIMUM_NUMBER_OF_PLAYERS; ++i)
-	{
-		player_terminals[i].state = _no_terminal_state;
-	}
+
 /*
 	terminal_font = load_font(*_get_font_spec(_computer_interface_font));
 */
@@ -528,10 +526,14 @@ void initialize_terminal_manager(
 void initialize_player_terminal_info(
 	short player_index)
 {
-	//CP Addition: trap for logout!
-	abort_terminal_mode(player_index);
+	struct player_terminal_data *terminal= get_player_terminal_data(player_index);
 
-	struct player_terminal_data* terminal = get_player_terminal_data(player_index);
+	//CP Addition: trap for logout!
+	if (terminal->state != _no_terminal_state)
+        {
+                L_Call_Terminal_Exit(terminal->terminal_id, player_index);
+        }
+
 	terminal->flags= 0;
 	terminal->phase = NONE; // not using a control panel.
 	terminal->state= _no_terminal_state; // And there is no line..
@@ -808,14 +810,6 @@ void abort_terminal_mode(
 	{
 		terminal->state= _no_terminal_state;
 		L_Call_Terminal_Exit(terminal->terminal_id, player_index);
-
-		if (film_profile.overhead_map_terminal)
-		{
-			auto player = get_player_data(player_index);
-			bool map_was_active = PLAYER_HAD_OVERHEAD_MAP_ACTIVE(player);
-			SET_PLAYER_MAP_STATUS(player, map_was_active);
-			SET_PLAYER_HAD_OVERHEAD_MAP_STATUS(player, false);
-		}
 	}
 }
 
@@ -1216,7 +1210,7 @@ static void display_picture(
 
 		int pict_header_width = get_pict_header_width(PictRsrc);
 		bool cinemascopeHack = false;
-		if (bounds.right != pict_header_width && bounds.right == 614)
+		if (bounds.right != pict_header_width)
 		{
 			cinemascopeHack = true;
 			bounds.right = pict_header_width;
@@ -1351,7 +1345,6 @@ void clear_compiled_terminal_cache()
 }
 
 extern OpenedResourceFile M1ShapesFile;
-extern OpenedResourceFile ExternalResources;
 
 static terminal_text_t* compile_marathon_terminal(char*, short);
 
@@ -1725,12 +1718,6 @@ static void goto_terminal_group(
 				terminal_data->maximum_line= count_total_lines(get_text_base(terminal_text),
 					RECTANGLE_WIDTH(&text_bounds), current_group->start_index, 
 					current_group->start_index+current_group->length);
-
-				if (film_profile.page_up_past_full_width_term_pict &&
-					terminal_data->maximum_line == 0)
-				{
-					terminal_data->maximum_line = 1;
-				}
 			}
 			break;
 			
@@ -1792,10 +1779,10 @@ static void get_date_string(
 	}
 	else
 	{
-		seconds = 800070137; // Wednesday, May 10, 1995 1:42:17
+		seconds = 800070137;
 		seconds += game_time_passed / TICKS_PER_SECOND;
 	}
-	game_time = *gmtime(&seconds);
+	game_time = *localtime(&seconds);
 	game_time.tm_year= 437;
 	game_time.tm_yday= 0;
 	game_time.tm_isdst= 0;

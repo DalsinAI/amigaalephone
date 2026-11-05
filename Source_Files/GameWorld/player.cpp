@@ -402,6 +402,7 @@ void allocate_player_memory(
 {
 	/* allocate space for all our players */
 	players= new player_data[MAXIMUM_NUMBER_OF_PLAYERS];
+	assert(players);
 
 #ifdef BETA
 	dprintf("#%d players at %p (%x bytes each) ---------------------------------------;g;", MAXIMUM_NUMBER_OF_PLAYERS, players, sizeof(struct player_data));
@@ -616,10 +617,7 @@ void decode_hotkeys(ModifiableActionQueues& action_queues)
 			player->hotkey_sequence <<= 2;
 			player->hotkey_sequence |= (action_flags >> _cycle_weapons_forward_bit) & 0x03;
 
-			if (!film_profile.hotkey_fix || !PLAYER_IS_DEAD(player))
-			{
-				player->hotkey = 1 + (player->hotkey_sequence & 0x03) + 4 * (((player->hotkey_sequence >> 2) & 0x03) - 1);
-			}
+			player->hotkey = 1 + (player->hotkey_sequence & 0x03) + 4 * (((player->hotkey_sequence >> 2) & 0x03) - 1);
 			player->hotkey_sequence = 0;
 		}
 		else if ((action_flags & hotkey_mask) == hotkey_mask)
@@ -673,12 +671,6 @@ void update_players(ActionQueues* inActionQueuesToUse, bool inPredictive)
 			action_flags= 0;
 		}
 
-		if (!inPredictive && player->net_oos && !player->net_oos_notified && !player->netdead)
-		{
-			screen_printf("%s has been desynchronized from the host", player->name);
-			player->net_oos_notified = true;
-		}
-
 		if (PLAYER_IS_TELEPORTING(player)) action_flags= 0;
 		
 		/* Deal with the terminal mode crap. */
@@ -691,8 +683,6 @@ void update_players(ActionQueues* inActionQueuesToUse, bool inPredictive)
 			}
 			action_flags= 0;
 		}
-		
-		player->run_key = action_flags & _run_dont_walk;
 		
 		bool IsSwimming = TEST_FLAG(player->variables.flags,_HEAD_BELOW_MEDIA_BIT) && player_settings.CanSwim;
 
@@ -711,7 +701,7 @@ void update_players(ActionQueues* inActionQueuesToUse, bool inPredictive)
 		
 		// if our head is under media, we can’t run (that sucks, too)
 		if (IsSwimming && (action_flags&_run_dont_walk)) action_flags&= ~_run_dont_walk, action_flags|= _swim;
-
+		
 		update_player_physics_variables(player_index, action_flags, inPredictive);
 
 		if(!inPredictive)
@@ -758,22 +748,36 @@ void update_players(ActionQueues* inActionQueuesToUse, bool inPredictive)
 
 			// if ((static_world->environment_flags&_environment_vacuum) || (player->variables.flags&_HEAD_BELOW_MEDIA_BIT)) handle_player_in_vacuum(player_index, action_flags);
 
+#if !defined(DISABLE_NETWORKING)
+			/* handle arbitration of the communications channel (i.e., dynamic_world->speaking_player_index) */
+			if (action_flags&_microphone_button)
+			{
+				if (dynamic_world->speaking_player_index==NONE)
+				{
+					if (GET_GAME_OPTIONS() & _force_unique_teams || (get_player_data(player_index)->team == get_player_data(local_player_index)->team))
+					{
+						dynamic_world->speaking_player_index= player_index;
+					} 
+
+					if (player_index==local_player_index) set_interface_microphone_recording_state(true);
+				}
+			}
+			else
+			{
+				if (dynamic_world->speaking_player_index==player_index)
+				{
+					dynamic_world->speaking_player_index= NONE;
+					if (player_index==local_player_index) set_interface_microphone_recording_state(false);
+				}
+			}
+#endif // !defined(DISABLE_NETWORKING)
+
 			if (PLAYER_IS_DEAD(player))
 			{
 				/* do things dead players do (sit around and check for self-reincarnation) */
 				if (PLAYER_HAS_MAP_OPEN(player))
 					SET_PLAYER_MAP_STATUS(player, false);
-
-				auto player_is_stationary =
-					(player->variables.action == _player_stationary) ||
-					(dynamic_world->player_count == 1) ||
-					(film_profile.finally_respawn &&
-					 dynamic_world->tick_count >
-					 player->ticks_at_death + 15 * TICKS_PER_SECOND);
-
-				if (PLAYER_IS_TOTALLY_DEAD(player) &&
-					(action_flags&_action_trigger_state) &&
-					player_is_stationary)
+				if (PLAYER_IS_TOTALLY_DEAD(player) && (action_flags&_action_trigger_state) && (player->variables.action==_player_stationary||dynamic_world->player_count==1))
 				{
 					// ZZZ: let the player know why he's not respawning
 					if(player->reincarnation_delay)
@@ -918,7 +922,7 @@ void damage_player(
 						{
 							short action= definition->death_action;
 							
-							play_object_sound(player->object_index, definition->death_sound, player_index == current_player_index);
+							play_object_sound(player->object_index, definition->death_sound);
 
 							if (action==NONE)
 							{
@@ -967,7 +971,7 @@ void damage_player(
 	}
 	
 	{
-		if (!PLAYER_IS_DEAD(player)) play_object_sound(player->object_index, definition->sound, player_index == current_player_index);
+		if (!PLAYER_IS_DEAD(player)) play_object_sound(player->object_index, definition->sound);
 		if (player_index==current_player_index)
 		{
 			if (definition->fade!=NONE) start_fade((definition->damage_threshhold!=NONE&&damage_amount>definition->damage_threshhold) ? (definition->fade+1) : definition->fade);
@@ -1097,12 +1101,6 @@ bool legal_player_powerup(
 {
 	struct player_data *player= get_player_data(player_index);
 	bool legal= true;
-
-	if ((static_world->environment_flags & _environment_m1_weapons)
-		&& film_profile.m1_bce_pickup)
-	{
-		return true;
-	}
 
 	if (item_index == player_powerups.Powerup_Invincibility)
 	{
@@ -1275,7 +1273,7 @@ static void handle_player_in_vacuum(
 			if (player->suit_oxygen % breathing_frequency == 0 &&
 				player_index == current_player_index)
 			{
-				SoundManager::instance()->PlaySound(Sound_Breathing(), nullptr, NONE);
+				SoundManager::instance()->PlayLocalSound(Sound_Breathing());
 			}
 
 			const auto offset_o2 = player->suit_oxygen + OXYGEN_WARNING_OFFSET;
@@ -1283,7 +1281,7 @@ static void handle_player_in_vacuum(
 				offset_o2 % OXYGEN_WARNING_FREQUENCY == 0 &&
 				player_index == current_player_index)
 			{
-				SoundManager::instance()->PlaySound(Sound_OxygenWarning(), nullptr, NONE);
+				SoundManager::instance()->PlayLocalSound(Sound_OxygenWarning());
 			}
 		}
 				
@@ -1349,15 +1347,13 @@ static void update_player_teleport(
 			/*  after the level transition */
 			case PLAYER_TELEPORTING_MIDPOINT+1:
 				/* Either the player is teleporting, or everyone is. (level change) */
-				if (View_DoInterlevelTeleportInEffects()) 
+				if(player_index==current_player_index)
 				{
-					if (player_index == current_player_index) 
-					{
+					if (View_DoInterlevelTeleportInEffects()) {
 						start_teleporting_effect(false);
+						play_object_sound(player->object_index, Sound_TeleportIn()); 
 						if (shapes_file_is_m1()) start_fade(_fade_bright);
 					}
-
-					play_object_sound(player->object_index, Sound_TeleportIn(), player_index == current_player_index);
 				}
 				player->teleporting_destination= NO_TELEPORTATION_DESTINATION;
 				break;
@@ -1407,25 +1403,21 @@ static void update_player_teleport(
 
 			case PLAYER_TELEPORTING_MIDPOINT+1:
 				 /* Interlevel or my intralevel.. */
-				if (player->teleporting_destination >= 0 || View_DoInterlevelTeleportInEffects())
+				if(player_index==current_player_index)
 				{
-					if (player_index == current_player_index)
-					{
+					if (player->teleporting_destination >= 0 || View_DoInterlevelTeleportInEffects()) {
 						start_teleporting_effect(false);
+						play_object_sound(player->object_index, Sound_TeleportIn()); 
 						if (shapes_file_is_m1()) start_fade(_fade_bright);
 					}
-
-					play_object_sound(player->object_index, Sound_TeleportIn(), player_index == current_player_index);
-				}
-				else {
-					player->teleporting_phase = PLAYER_TELEPORTING_DURATION;
-				}
-
-				player->teleporting_destination = NO_TELEPORTATION_DESTINATION;
+					else {
+						player->teleporting_phase = PLAYER_TELEPORTING_DURATION;
+					}
+				} 
+				player->teleporting_destination= NO_TELEPORTATION_DESTINATION;
 
 				if (player->teleporting_phase != PLAYER_TELEPORTING_DURATION) break;
 			
-				[[fallthrough]];
 			case PLAYER_TELEPORTING_DURATION:
 				monster->action= _monster_is_moving;
 				SET_PLAYER_TELEPORTING_STATUS(player, false);
@@ -1473,7 +1465,7 @@ static void update_player_teleport(
 					{
 						start_teleporting_effect(true);
 					}
-					play_object_sound(player->object_index, Sound_TeleportOut(), player_index == current_player_index);
+					play_object_sound(player->object_index, Sound_TeleportOut());
 				}
 				else /* Level change */
 				{
@@ -1482,7 +1474,7 @@ static void update_player_teleport(
 					/* Everyone plays the teleporting effect out. */
 					if (View_DoInterlevelTeleportOutEffects()) {
 						start_teleporting_effect(true);
-						play_object_sound(current_player->object_index, Sound_TeleportOut(), player_index == current_player_index);
+						play_object_sound(current_player->object_index, Sound_TeleportOut());
 					}
 					
 					/* Every players object plays the sound, and everyones monster responds. */
@@ -1498,7 +1490,7 @@ static void update_player_teleport(
 					
 							/* Tell everyone else to use the teleporting junk... */
 							SET_PLAYER_INTERLEVEL_TELEPORTING_STATUS(player, true);
-							player->interlevel_teleport_phase= other_player_index < player_index ? 0 : -1;
+							player->interlevel_teleport_phase= 0;
 						
 							monster->action= _monster_is_teleporting;
 						}
@@ -1546,7 +1538,7 @@ static void update_player_media(
 			struct media_data *media= get_media_data(polygon->media_index); // should be valid
 			{
 			world_distance current_magnitude= (player->variables.old_flags&_HEAD_BELOW_MEDIA_BIT) ? media->current_magnitude : (media->current_magnitude>>1);
-			world_distance external_magnitude= FIXED_TO_WORLD(GUESS_HYPOTENUSE(std::abs(player->variables.external_velocity.i), std::abs(player->variables.external_velocity.j)));
+			world_distance external_magnitude= FIXED_TO_WORLD(GUESS_HYPOTENUSE(ABS(player->variables.external_velocity.i), ABS(player->variables.external_velocity.j)));
 			struct damage_definition *damage= get_media_damage(polygon->media_index, (player->variables.flags&_HEAD_BELOW_MEDIA_BIT) ? FIXED_ONE : FIXED_ONE/4);
 			
 			// apply current if possible
@@ -1571,7 +1563,7 @@ static void update_player_media(
 		
 		if (sound_type!=NONE)
 		{
-			play_object_sound(monster->object_index, get_media_sound(polygon->media_index, sound_type), player_index == current_player_index);
+			play_object_sound(monster->object_index, get_media_sound(polygon->media_index, sound_type));
 		}
 	}
 
@@ -1590,7 +1582,7 @@ static void update_player_media(
 		
 		if (sound_index!=NONE)
 		{
-			play_object_sound(monster->object_index, sound_index, player_index == current_player_index);
+			play_object_sound(monster->object_index, sound_index);
 		}
 	}
 }
@@ -1754,7 +1746,7 @@ static void recreate_player(
 		player_teleported_dead= true;
 	}
 
-	/* Clear the transient flags, leave the persistant flags */
+	/* Clear the transient flags, leave the persistant flags, like Player has cheated */
 	player->flags &= (_player_is_teleporting_flag | _player_is_interlevel_teleporting_flag | PLAYER_PERSISTANT_FLAGS );
 	player->monster_index= monster_index;
 	player->object_index= monster->object_index;
@@ -1833,8 +1825,6 @@ static void kill_player(
 	if (aggressor_player_index==player_index && (GET_GAME_OPTIONS()&_suicide_is_penalized)) player->reincarnation_delay+= SUICIDE_REINCARNATION_DELAY;
 
 	kill_player_physics_variables(player_index);
-
-	player->ticks_at_death = dynamic_world->tick_count;
 }
 
 static void give_player_initial_items(
@@ -1975,9 +1965,9 @@ static void get_player_transfer_mode(
 	} 
 	else if (PLAYER_IS_INTERLEVEL_TELEPORTING(player))
 	{
-		if (player->teleporting_destination >= 0 || (player->interlevel_teleport_phase < PLAYER_TELEPORTING_MIDPOINT && View_DoInterlevelTeleportOutEffects()) || (player->interlevel_teleport_phase >= PLAYER_TELEPORTING_MIDPOINT && View_DoInterlevelTeleportInEffects()))
+		if (player->teleporting_destination >= 0 || (player->teleporting_phase < PLAYER_TELEPORTING_MIDPOINT && View_DoInterlevelTeleportOutEffects()) || (player->teleporting_phase >= PLAYER_TELEPORTING_MIDPOINT && View_DoInterlevelTeleportInEffects()))
 		{
-			*transfer_mode= player->interlevel_teleport_phase <PLAYER_TELEPORTING_MIDPOINT ? _xfer_fold_out : _xfer_fold_in;
+			*transfer_mode= player->teleporting_phase<PLAYER_TELEPORTING_MIDPOINT ? _xfer_fold_out : _xfer_fold_in;
 			*transfer_period= PLAYER_TELEPORTING_MIDPOINT+1;
 		}
 	}

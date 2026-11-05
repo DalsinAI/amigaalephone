@@ -91,6 +91,14 @@ int network_join(void)
 	return false;
 }
 
+void network_speaker_idle_proc(void)
+{
+}
+
+void network_microphone_idle_proc(void)
+{
+}
+
 bool current_game_has_balls(void)
 {
 	return false;

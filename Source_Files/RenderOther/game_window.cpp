@@ -60,9 +60,9 @@ Mar 08, 2002 (Woody Zenfell):
 
 #include "cseries.h"
 
-#include <array>
-
+#ifdef HAVE_OPENGL
 #include "OGL_Headers.h"
+#endif
 
 #include "HUDRenderer_SW.h"
 #include "game_window.h"
@@ -77,7 +77,8 @@ Mar 08, 2002 (Woody Zenfell):
 #include "screen_definitions.h"
 #include "images.h"
 #include "InfoTree.h"
-#include "interface_menus.h"
+
+#include    "network_sound.h"
 
 extern void draw_panels(void);
 extern void validate_world_window(void);
@@ -383,6 +384,13 @@ void mark_player_network_stats_as_dirty(short player_index)
 	}
 }
 
+void set_interface_microphone_recording_state(bool state)
+{
+#if !defined(DISABLE_NETWORKING)
+	set_network_microphone_state(state);
+#endif // !defined(DISABLE_NETWORKING)
+}
+
 void scroll_inventory(short dy)
 {
 	short mod_value, index, current_inventory_screen, section_count, test_inventory_screen = 0;
@@ -520,11 +528,7 @@ void draw_panels(void)
 }
 
 extern short vidmasterStringSetID; // shell.cpp
-extern short vidmasterLevelOffset;
 struct weapon_interface_data *original_weapon_interface_definitions = NULL;
-
-extern std::array<int, iAbout> menu_item_order;
-std::vector<int> original_menu_item_order;
 
 void reset_mml_interface()
 {
@@ -533,15 +537,6 @@ void reset_mml_interface()
 			weapon_interface_definitions[i] = original_weapon_interface_definitions[i];
 		free(original_weapon_interface_definitions);
 		original_weapon_interface_definitions = NULL;
-	}
-	
-	if (original_menu_item_order.size())
-	{
-		std::copy(original_menu_item_order.begin(),
-				  original_menu_item_order.end(),
-				  menu_item_order.begin());
-
-		original_menu_item_order.clear();
 	}
 }
 
@@ -553,11 +548,6 @@ void parse_mml_interface(const InfoTree& root)
 		assert(original_weapon_interface_definitions);
 		for (unsigned i = 0; i < NUMBER_OF_WEAPON_INTERFACE_DEFINITIONS; i++)
 			original_weapon_interface_definitions[i] = weapon_interface_definitions[i];
-	}
-
-	if (!original_menu_item_order.size())
-	{
-		original_menu_item_order.assign(menu_item_order.begin(), menu_item_order.end());
 	}
 	
 	root.read_attr("motion_sensor", MotionSensorActive);
@@ -581,19 +571,6 @@ void parse_mml_interface(const InfoTree& root)
 			r->right = right;
 		}
 	}
-
-	for (const InfoTree& menu_item : root.children_named("menu_item"))
-	{
-		int16_t index;
-		if (!menu_item.read_indexed("index", index, menu_item_order.size()))
-			continue;
-
-		int16_t item;
-		if (menu_item.read_indexed("item", item, iAbout + 1))
-		{
-			menu_item_order[index] = item;
-		}
-	}
 	
 	for (const InfoTree &color : root.children_named("color"))
 	{
@@ -614,7 +591,6 @@ void parse_mml_interface(const InfoTree& root)
 	{
 		vidmasterStringSetID = -1;
 		vid.read_attr_bounded<int16>("stringset_index", vidmasterStringSetID, -1, SHRT_MAX);
-		vid.read_attr_bounded<int16>("level_offset", vidmasterLevelOffset, 0, 1);
 	}
 	
 	for (const InfoTree &weapon : root.children_named("weapon"))

@@ -25,6 +25,8 @@
 */
 
 #include "Decoder.h"
+
+#ifdef HAVE_SNDFILE
 #include "sndfile.h"
 
 class SndfileDecoder : public Decoder
@@ -35,15 +37,12 @@ public:
 	void Rewind();
 	void Close();
 
-	AudioFormat GetAudioFormat() { return AudioFormat::_32_float; }
+	bool IsSixteenBit() { return true; }
 	bool IsStereo() { return (sfinfo.channels == 2); }
-	int BytesPerFrame() { return 4 * (IsStereo() ? 2 : 1); }
-	uint32_t Rate() { return sfinfo.samplerate; }
+	bool IsSigned() { return true; }
+	int BytesPerFrame() { return 2 * (IsStereo() ? 2 : 1); }
+	float Rate() { return (float) sfinfo.samplerate; }
 	bool IsLittleEndian() { return PlatformIsLittleEndian(); }
-	float Duration() { return Frames() / Rate(); }
-	uint32_t Position();
-	void Position(uint32_t position);
-	uint32_t Size() { return Frames() * BytesPerFrame(); }
 
 	int32 Frames() { return sfinfo.frames; }
 
@@ -54,5 +53,7 @@ private:
 	SF_INFO sfinfo;
 	SDL_RWops* rwops;
 };
+
+#endif
 
 #endif

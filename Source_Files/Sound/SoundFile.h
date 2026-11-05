@@ -26,7 +26,6 @@ SOUND_DEFINITIONS.H
 #include "AStream.h"
 #include "BStream.h"
 #include "FileHandler.h"
-#include "SoundManagerEnums.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -36,8 +35,9 @@ typedef std::vector<uint8> SoundData;
 class SoundInfo 
 {
 public:
-	SoundInfo() : audio_format(AudioFormat::_8_bit),
+	SoundInfo() : sixteen_bit(false), 
 		      stereo(false), 
+		      signed_8bit(false), 
 		      little_endian(false), 
 		      bytes_per_frame(1),
 		      loop_start(0),
@@ -45,8 +45,9 @@ public:
 		      rate(0),
 		      length(0) { }
 	
-	AudioFormat audio_format;
+	bool sixteen_bit;
 	bool stereo;
+	bool signed_8bit;
 	bool little_endian;
 	int bytes_per_frame;
 	int32 loop_start;
@@ -83,10 +84,7 @@ private:
 
 	bool UnpackStandardSystem7Header(BIStreamBE &header);
 	bool UnpackExtendedSystem7Header(BIStreamBE &header);
-
-	void ConvertSignedToUnsignedByte(uint8* data, int length);
 	
-	bool signed_8bits;
 	uint32 data_offset;
 };
 
@@ -95,8 +93,6 @@ class SoundDefinition
 public:
 	SoundDefinition();
 	bool Unpack(OpenedFile &SoundFile);
-	bool Unpack(BIStreamBE& s);
-	
 	bool Load(OpenedFile &SoundFile, bool LoadPermutations);
 	std::shared_ptr<SoundData> LoadData(OpenedFile& SoundFile, short permutation);
 	void Unload() { sounds.clear(); }
@@ -122,6 +118,8 @@ public: // for now
 
 	int32 group_offset, single_length, total_length; // magic numbers necessary to load sounds
 	std::vector<int32> sound_offsets; // zero-based from group offset
+
+	uint32 last_played; // machine ticks
 
 	std::vector<SoundHeader> sounds;
 };

@@ -162,6 +162,67 @@ std::string get_application_identifier()
 	return std::string("org.bungie.source.AlephOne");
 }
 
+#elif defined(__amigaos__)
+
+// AmigaOS: everything lives in the program's drawer. The engine's own data
+// (MML, Plugins/Default_Theme) is beside the program; a scenario's data is
+// in its Scenario drawer unless a drawer is named (Shell argument, or the
+// DATA tool type); preferences, saved games and the rest go in User.
+
+char get_path_list_separator()
+{
+	return ';'; // ':' is part of an AmigaDOS name
+}
+
+std::string get_data_path(CSPathType type)
+{
+	std::string path = "";
+
+	switch (type) {
+		case kPathLocalData:
+		case kPathLogs:
+		case kPathPreferences:
+			path = "PROGDIR:User";
+			break;
+		case kPathDefaultData:
+			path = "PROGDIR:Scenario";
+			break;
+		case kPathBundleData:
+			path = "PROGDIR:";
+			break;
+		case kPathLegacyData:
+		case kPathLegacyPreferences:
+			// not applicable
+			break;
+		case kPathScreenshots:
+			path = "PROGDIR:User/Screenshots";
+			break;
+		case kPathSavedGames:
+			path = "PROGDIR:User/Saved Games";
+			break;
+		case kPathQuickSaves:
+			path = "PROGDIR:User/Quick Saves";
+			break;
+		case kPathImageCache:
+			path = "PROGDIR:User/Image Cache";
+			break;
+		case kPathRecordings:
+			path = "PROGDIR:User/Recordings";
+			break;
+	}
+	return path;
+}
+
+std::string get_application_name()
+{
+	return std::string(A1_DISPLAY_NAME);
+}
+
+std::string get_application_identifier()
+{
+	return std::string("org.bungie.source.AlephOne");
+}
+
 #else
 
 // Linux and compatible

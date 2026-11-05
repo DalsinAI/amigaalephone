@@ -94,28 +94,18 @@ struct LandscapeOptions
 	// Whether the texture repeats in the vertical direction (true: like Marathon 1)
 	// or gets clamped in the vertical direction (false: like Marathon 2/oo)
 	bool VertRepeat;
-	// This is the azimuth or yaw (in degrees)
+	// This is the azimuth or yaw (full circle = 512);
 	// the texture is shifted leftward, relative to view direction, by this amount.
-	double Azimuth;
-
-	short AzimuthAngle() const { return static_cast<short>(Azimuth / 360.f * FULL_CIRCLE + 0.5f); }
-
-	// for spherical textures only, the elevation from the horizon
-	double Elevation;
-
-	bool SphereMap; // currently ignores all scaling and repeat settings
+	angle Azimuth;
 	
 	// Constructor: sets everything to defaults appropriate for standard textures
 	// Same scale for horizontal and vertical, 2^1 = 2 repeats,
 	// OpenGL hight is half width, and the azimuth is zero
-	LandscapeOptions(): HorizExp(1), VertExp(1), OGL_AspRatExp(0), VertRepeat(false), Azimuth(0.f), Elevation(0.f), SphereMap{false} {}
+	LandscapeOptions(): HorizExp(1), VertExp(1), OGL_AspRatExp(0), VertRepeat(false), Azimuth(0) {}
 };
 
 LandscapeOptions *View_GetLandscapeOptions(shape_descriptor Desc);
 
-const LandscapeOptions& View_GetLandscapeOptions(int16_t coll, int16_t frame);
-void View_SetLandscapeOptions(int16_t coll, int16_t frame,
-							  const LandscapeOptions& options);
 
 class InfoTree;
 void parse_mml_view(const InfoTree& root);

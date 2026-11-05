@@ -129,7 +129,7 @@ item_definition *get_item_definition_external(
 
 int16 item_definition::get_maximum_count_per_player(bool is_m1, int difficulty_level) const
 {
-	if (extended_maximum_count[difficulty_level] != NONE)
+	if (has_extended_maximum_count[difficulty_level])
 	{
 		return extended_maximum_count[difficulty_level];
 	}
@@ -195,7 +195,7 @@ short new_item(
 			else if ((get_item_kind(type) == _ball) && !static_world->ball_in_play)
 			{
 				static_world->ball_in_play = true;
-				SoundManager::instance()->PlaySound(_snd_got_ball, nullptr, NONE);
+				SoundManager::instance()->PlayLocalSound(_snd_got_ball);
 			}
 			
 			/* let PLACEMENT.C keep track of how many there are */
@@ -227,7 +227,7 @@ void trigger_nearby_items(
 			switch (GET_OBJECT_OWNER(object))
 			{
 				case _object_is_item:
-					if (OBJECT_IS_INVISIBLE(object) && object->permutation!=NONE && get_item_shape(object->permutation) != NONE)
+					if (OBJECT_IS_INVISIBLE(object) && object->permutation!=NONE)
 					{
 						teleport_object_in(object_index);
 					}
@@ -401,7 +401,7 @@ static void a1_swipe_nearby_items(
 				object= get_object_data(next_object);
 				if (GET_OBJECT_OWNER(object)==_object_is_item && !OBJECT_IS_INVISIBLE(object)) 
 				{
-					if (guess_distance2d(&player->location, &object->location)<=MAXIMUM_ARM_REACH)
+					if (guess_distance2d((world_point2d *) &player->location, (world_point2d *) &object->location)<=MAXIMUM_ARM_REACH)
 					{
 						world_distance radius, height;
 						
@@ -461,7 +461,7 @@ static void m2_swipe_nearby_items(
 				object= get_object_data(next_object);
 				if (GET_OBJECT_OWNER(object)==_object_is_item && !OBJECT_IS_INVISIBLE(object)) 
 				{
-					if (guess_distance2d(&player->location, &object->location)<=MAXIMUM_ARM_REACH)
+					if (guess_distance2d((world_point2d *) &player->location, (world_point2d *) &object->location)<=MAXIMUM_ARM_REACH)
 					{
 						world_distance radius, height;
 						
@@ -706,7 +706,7 @@ bool try_and_add_player_item(
 	/* Play the pickup sound */
 	if (success && player_index==current_player_index)
 	{
-		SoundManager::instance()->PlaySound(grabbed_sound_index, nullptr, NONE);
+		SoundManager::instance()->PlayLocalSound(grabbed_sound_index);
 	
 		/* Flash screen */
 		start_fade(_fade_bonus);
@@ -767,8 +767,8 @@ static bool test_item_retrieval(
 
 	do
 	{
-		short line_index= find_line_crossed_leaving_polygon(polygon_index, location1,
-			location2);
+		short line_index= find_line_crossed_leaving_polygon(polygon_index, (world_point2d *) location1,
+			(world_point2d *) location2);
 		
 		if (line_index!=NONE)
 		{
@@ -877,7 +877,10 @@ void parse_mml_items(const InfoTree& root)
 			if (!max.read_indexed("index", difficulty, NUMBER_OF_GAME_DIFFICULTY_LEVELS))
 				continue;
 
-			max.read_indexed("maximum", def.extended_maximum_count[difficulty], SHRT_MAX + 1);
+			if (max.read_indexed("maximum", def.extended_maximum_count[difficulty], SHRT_MAX+1))
+			{
+				def.has_extended_maximum_count[difficulty] = true;
+			}
 		}
 
 		for (const InfoTree &shape : itree.children_named("shape"))

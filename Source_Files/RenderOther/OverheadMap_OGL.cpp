@@ -70,9 +70,11 @@ Jan 25, 2002 (Br'fin (Jeremy Parsons)):
 
 #ifdef HAVE_OPENGL
 
+#ifdef HAVE_OPENGL
 #include "OGL_Headers.h"
 #include "OGL_Render.h"
-#include "OGL_Textures.h"
+#endif
+
 
 
 // rgb_color straight to OpenGL
@@ -365,8 +367,7 @@ void OverheadMap_OGL_Class::draw_text(
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 	glLoadIdentity();
-	glTranslatef(left_location.x,left_location.y,0);
-	FontData.NearFilter = TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter;
+	glTranslatef(left_location.x,left_location.y,0);	
 	FontData.OGL_Render(text);
 	glPopMatrix();
 }

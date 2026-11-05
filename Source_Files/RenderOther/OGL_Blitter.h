@@ -26,7 +26,10 @@
 #include "cseries.h"
 #include "ImageLoader.h"
 #include "Image_Blitter.h"
+
+#ifdef HAVE_OPENGL
 #include "OGL_Headers.h"
+#endif
 
 #include <vector>
 #include <set>
@@ -39,23 +42,21 @@ class OGL_Blitter;
 class OGL_Blitter : public Image_Blitter
 {
 public:
-	OGL_Blitter(GLuint nearFilter = GL_LINEAR);
+	OGL_Blitter();
 	
 	void Unload();
 
 	void Draw(SDL_Surface *dst_surface, const Image_Rect& dst, const Image_Rect& src) { Draw(dst, src); }
 	void Draw(const Image_Rect& dst) { Draw(dst, crop_rect); }
 	void Draw(const Image_Rect& dst, const Image_Rect& src);
-
+	
 	~OGL_Blitter();
 			
 	static void StopTextures();
 	static void BoundScreen(bool in_game = false);
-	static void WindowToScreen(int& x, int& y);
+	static void WindowToScreen(int& x, int& y, bool in_game = false);
 	static int ScreenWidth();
 	static int ScreenHeight();
-
-	GLuint nearFilter;
 	
 private:
 	

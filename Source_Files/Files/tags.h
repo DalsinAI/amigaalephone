@@ -85,7 +85,6 @@ enum Typecode {
 	_typecode_netscript,	// ZZZ pseudo typecode
 	_typecode_shapespatch,
 	_typecode_movie,
-	_typecode_application,
 	NUMBER_OF_TYPECODES
 };
 
@@ -167,9 +166,6 @@ void set_typecode(Typecode which, uint32 _type);
 
 /* Embedded shapes */
 #define SHAPE_PATCH_TAG FOUR_CHARS_TO_INT('S','h','P','a')
-
-/* Embedded sounds */
-#define SOUND_PATCH_TAG FOUR_CHARS_TO_INT('S','n','P','a')
 
 /* Embedded scripts */
 #define MMLS_TAG FOUR_CHARS_TO_INT('M','M','L','S')

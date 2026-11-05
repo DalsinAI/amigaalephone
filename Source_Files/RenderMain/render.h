@@ -101,7 +101,8 @@ struct view_data
 	angle half_cone; /* often ==field_of_view/2 (when screen_width==standard_screen_width) */
 	angle half_vertical_cone;
 
-	long_vector2d left_edge, right_edge; // view cone edges as world directions
+	world_vector2d untransformed_left_edge, untransformed_right_edge;
+	world_vector2d left_edge, right_edge, top_edge, bottom_edge;
 
 	short ticks_elapsed;
 	uint32 tick_count; /* for effects and transfer modes */
@@ -138,9 +139,6 @@ struct view_data
 	
 	// whether to mimic software renderer when looking up/down
 	bool mimic_sw_perspective;
-
-	// whether to correct sprite parallax when not mimicking software
-	bool billboard_xy;
 };
 
 /* ---------- render flags */

@@ -24,7 +24,7 @@ SOUNDFILE.CPP
 #include "Logging.h"
 #include "csmisc.h"
 #include "Decoder.h"
-#include "byte_swapping.h"
+
 #include <assert.h>
 
 #include "BStream.h"
@@ -35,8 +35,7 @@ namespace io = boost::iostreams;
 
 SoundHeader::SoundHeader() :
 	SoundInfo(),
-	data_offset(0),
-	signed_8bits(false)
+	data_offset(0)
 {
 }
 
@@ -45,7 +44,8 @@ bool SoundHeader::UnpackStandardSystem7Header(BIStreamBE &header)
 	try 
 	{
 		bytes_per_frame = 1;
-		audio_format = AudioFormat::_8_bit;
+		signed_8bit = false;
+		sixteen_bit = false;
 		stereo = false;
 		little_endian = false;
 		header.ignore(4); // sample pointer
@@ -55,7 +55,7 @@ bool SoundHeader::UnpackStandardSystem7Header(BIStreamBE &header)
 		header >> loop_end;
 		
 		return true;
-	} catch (const basic_bstream::failure& e) {
+	} catch (basic_bstream::failure e) {
 		return false;
 	}
 }
@@ -64,6 +64,7 @@ bool SoundHeader::UnpackExtendedSystem7Header(BIStreamBE &header)
 {
 	try 
 	{
+		signed_8bit = false;
 		header.ignore(4); // sample pointer
 		int32 num_channels;
 		header >> num_channels;
@@ -89,7 +90,7 @@ bool SoundHeader::UnpackExtendedSystem7Header(BIStreamBE &header)
 			if (format != FOUR_CHARS_TO_INT('t','w','o','s') || comp_id != -1) {
 				return false;
 			}
-			signed_8bits = true;
+			signed_8bit = true;
 			header.ignore(4);
 		} else {
 			header.ignore(22);
@@ -98,14 +99,21 @@ bool SoundHeader::UnpackExtendedSystem7Header(BIStreamBE &header)
 		int16 sample_size;
 		header >> sample_size;
 
-		audio_format = sample_size == 16 ? AudioFormat::_16_bit : AudioFormat::_8_bit;
-		bytes_per_frame = (audio_format == AudioFormat::_16_bit ? 2 : 1) * (stereo ? 2 : 1);
+		sixteen_bit = (sample_size == 16);
+		bytes_per_frame = (sixteen_bit ? 2 : 1) * (stereo ? 2 : 1);
 
 		length = num_frames * bytes_per_frame;
 		little_endian = false;
+
+		if ((loop_end - loop_start >= 4) && ((loop_start % bytes_per_frame) || (loop_end % bytes_per_frame)))
+		{
+			logWarning("loop_start=%i and loop_end=%i but bytes_per_frame=%i; interpreting as frame offsets", loop_start, loop_end, bytes_per_frame);
+			loop_start *= bytes_per_frame;
+			loop_end *= bytes_per_frame;
+		}
 		
 		return true;
-	} catch (const basic_bstream::failure& e) {
+	} catch (basic_bstream::failure e) {
 		return false;
 	}
 }
@@ -143,7 +151,7 @@ bool SoundHeader::Load(BIStreamBE& s)
 
 std::shared_ptr<SoundData> SoundHeader::LoadData(BIStreamBE& s)
 {
-	if (!data_offset || length <= 0)
+	if (!data_offset)
 	{
 		return std::shared_ptr<SoundData>();
 	}
@@ -153,34 +161,13 @@ std::shared_ptr<SoundData> SoundHeader::LoadData(BIStreamBE& s)
 	try 
 	{
 		s.read(reinterpret_cast<char*>(&(*p)[0]), length);
-
-		switch (audio_format)
-		{
-			case AudioFormat::_8_bit:
-				if (signed_8bits) {
-					ConvertSignedToUnsignedByte(p->data(), length);
-				}
-				break;
-			case AudioFormat::_16_bit:
-				if (little_endian ^ PlatformIsLittleEndian()) {
-					byte_swap_memory(p->data(), _2byte, length / 2);
-				}
-				break;
-		}
 	}
-	catch (const basic_bstream::failure& e)
+	catch (basic_bstream::failure e)
 	{
 		p.reset();
 	}
 
 	return p;
-}
-
-void SoundHeader::ConvertSignedToUnsignedByte(uint8* data, int length) 
-{
-	for (int i = 0; i < length; i++) {
-		data[i] = static_cast<int8>(data[i]) + 128;
-	}
 }
 
 bool SoundHeader::Load(OpenedFile &SoundFile)
@@ -268,7 +255,8 @@ SoundDefinition::SoundDefinition() :
 	high_pitch(0),
 	permutations(1),
 	permutations_played(0),
-	group_offset(0), single_length(0), total_length(0)
+	group_offset(0), single_length(0), total_length(0),
+	last_played(0)
 {
 }
 
@@ -279,14 +267,9 @@ bool SoundDefinition::Unpack(OpenedFile &SoundFile)
 	vector<uint8> headerBuffer(HeaderSize());
 	if (!SoundFile.Read(headerBuffer.size(), &headerBuffer[0])) 
 		return false;
-
-	io::stream_buffer<io::array_source> sb{reinterpret_cast<char*>(headerBuffer.data()), headerBuffer.size()};
-	BIStreamBE header{&sb};
-	return Unpack(header);
-}
-
-bool SoundDefinition::Unpack(BIStreamBE& header)
-{
+	
+	AIStreamBE header(&headerBuffer[0], headerBuffer.size());
+	
 	header >> sound_code;
 
 	header >> behavior_index;
@@ -309,7 +292,8 @@ bool SoundDefinition::Unpack(BIStreamBE& header)
 		header >> sound_offsets[i];
 	}
 
-	header.ignore(4); //uint32 last_played
+	header >> last_played;
+	
 	header.ignore(4 * 2);
 
 	return true;
@@ -351,11 +335,6 @@ std::shared_ptr<SoundData> SoundDefinition::LoadData(OpenedFile& SoundFile, shor
 		return p;
 	}
 
-	if (permutation >= sounds.size())
-	{
-		return p;
-	}
-	
 	return sounds[permutation].LoadData(SoundFile);
 }
 
@@ -363,7 +342,7 @@ bool M2SoundFile::Open(FileSpecifier& SoundFileSpec)
 {
 	Close();
 
-	auto sound_file = std::make_unique<OpenedFile>();
+	std::unique_ptr<OpenedFile> sound_file(new OpenedFile);
 
 	if (!SoundFileSpec.Open(*sound_file, false)) return false;
 
