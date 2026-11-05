@@ -6,7 +6,11 @@ tag release-20230529, commit 1f4c973aba1017c814e8c3f0db001fe030b1c555,
 GPL-3.0-or-later), the open-source Marathon engine, for AmigaOS 3.2 on a
 68040 or 68060 with an FPU, with its software renderer.
 
-Status: builds and links; not yet run on an Amiga.
+Status: lab-tested (Instance-45, an emulated 68040 with an FPU, RTG,
+5 November 2026) with Marathon 2: Durandal (Bungie's free data,
+release-20230529): the main menu, Begin New Game, the first level
+(walking, turning, the HUD and motion sensor), Esc and "cancel the game
+in progress", Quit back to the Shell. Pictures: docs/screenshots/.
 
 
 What you need
