@@ -86,7 +86,35 @@ void amiga_alert_requester(const char* title, const char* message)
 	es.es_Title = (CONST_STRPTR) title;
 	es.es_TextFormat = (CONST_STRPTR) "%s";
 	es.es_GadgetFormat = (CONST_STRPTR) "OK";
-	APTR args[1] = { (APTR) message };
+	// EasyRequest does not wrap: a long alert would run off the screen and
+	// hide its button, so the text is broken into lines of up to 60.
+	std::string text, word;
+	size_t col = 0;
+	for (const char* p = message;; p++) {
+		if (*p && *p != ' ' && *p != '\n') {
+			word += *p;
+			continue;
+		}
+		if (!word.empty()) {
+			if (col && col + 1 + word.size() > 60) {
+				text += '\n';
+				col = 0;
+			} else if (col) {
+				text += ' ';
+				col++;
+			}
+			text += word;
+			col += word.size();
+			word.clear();
+		}
+		if (!*p)
+			break;
+		if (*p == '\n') {
+			text += '\n';
+			col = 0;
+		}
+	}
+	APTR args[1] = { (APTR) text.c_str() };
 	EasyRequestArgs(NULL, &es, NULL, args);
 	CloseLibrary((struct Library*) IntuitionBase);
 }
