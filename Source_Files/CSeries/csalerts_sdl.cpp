@@ -47,29 +47,11 @@ April 22, 2003 (Woody Zenfell):
 #endif
 
 #ifdef __amigaos__
-#include <exec/types.h>
-#include <intuition/intuition.h>
-#include <proto/exec.h>
-#include <proto/intuition.h>
-
 // OpenGPU's SDL 2 has no message box: before the game's screen is up (no
 // Marathon data, say) an alert is an Intuition requester on the Workbench
-// screen, else a Workbench start would end without a word.
-static void amiga_alert_requester(const char *title, const char *message)
-{
-	struct IntuitionBase *IntuitionBase = (struct IntuitionBase *) OpenLibrary((CONST_STRPTR) "intuition.library", 37);
-	if (!IntuitionBase)
-		return;
-	struct EasyStruct es;
-	es.es_StructSize = sizeof(es);
-	es.es_Flags = 0;
-	es.es_Title = (CONST_STRPTR) title;
-	es.es_TextFormat = (CONST_STRPTR) "%s";
-	es.es_GadgetFormat = (CONST_STRPTR) "OK";
-	APTR args[1] = { (APTR) message };
-	EasyRequestArgs(NULL, &es, NULL, args);
-	CloseLibrary((struct Library *) IntuitionBase);
-}
+// screen (amiga/amiga_main.cpp), else a Workbench start would end without
+// a word.
+#include "amiga_main.h"
 #endif
 
 /*
