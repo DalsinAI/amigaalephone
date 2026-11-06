@@ -26,6 +26,21 @@ What you need
 - Marathon data: none comes with the engine. See Data-ReadMe in the drawer.
 
 
+Installing
+----------
+
+Unpack the archive anywhere (on AmiCradle: SYS:Utilities/OpenCompress x
+alephone-...lha RAM:), then double-click Install-AlephOne beside the
+AlephOne drawer: it checks for a 68040 with FPU and for SDL2.module and
+SDL2_image.module (in LIBS:GFOpenGPU/, or copied there from LIBS:OpenGPU/),
+asks where to put the game (Work:Games by default) and updates an earlier
+install in place, keeping its User drawer (preferences, saved games, films)
+and the Scenario drawer with your Marathon data.
+
+The archive is made by package/build-amiga.sh (Cradle's stove_build,
+target package), which fetches zlib 1.3.1 and Boost 1.83.0's headers.
+
+
 Using it
 --------
 
