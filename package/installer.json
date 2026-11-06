@@ -1,0 +1,13 @@
+{
+  "name": "Aleph One",
+  "version": "1.6.2-amiga1",
+  "drawer": "AlephOne",
+  "program": "AlephOne",
+  "cpu": "68040",
+  "fpu": true,
+  "space": 15000000,
+  "modules": ["SDL2.module", "SDL2_image.module"],
+  "keep": ["User", "Scenario"],
+  "parent": "Work:Games",
+  "badge": "../amiga/icons/art/alephone.png"
+}

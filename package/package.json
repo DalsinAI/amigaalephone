@@ -1,0 +1,29 @@
+{
+  "drawer": "AlephOne",
+  "drawer_icon": "amiga/icons/AlephOne-drawer.info",
+  "archive": "alephone-{version}-68040",
+  "members": [
+    {
+      "name": "AlephOne",
+      "build": "AlephOne",
+      "check": "executable_sha256"
+    },
+    {
+      "name": "",
+      "tar": "drawer.tar"
+    }
+  ],
+  "aminet": [
+    ["Short", "Aleph One 1.6.2, the Marathon engine, 68040+FPU"],
+    ["Author", "Bungie (Marathon); the Aleph One developers; Amiga port: AmiCradle Team"],
+    ["Uploader", "AmiCradle Team"],
+    ["Type", "game/shoot"],
+    ["Version", "{version}"],
+    ["Requires", "AmigaOS 3.2, 68040/68060 with FPU, RTG, GFOpenGPU (SDL2.module, SDL2_image.module), Marathon data"],
+    ["Architecture", "m68k-amigaos >= 3.0"]
+  ],
+  "root": [
+    {"name": "Install-AlephOne", "repo": "package/installer/Install-AlephOne", "installer": true},
+    {"name": "Install-AlephOne.info", "repo": "package/installer/Install-AlephOne.info"}
+  ]
+}
