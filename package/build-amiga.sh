@@ -65,7 +65,12 @@ fi
 make -f amiga/Makefile.amigaos STOVE="$STOVE" NDK="$NDK" SDL2KIT="$SDL2KIT" ZLIB="$BUILD/zlib" BOOST="$BOOST" -j4 \
 	> "$OUT/build-output.txt" 2>&1 || { tail -n 60 "$OUT/build-output.txt"; exit 1; }
 cp build/amigaos/AlephOne/AlephOne "$BUILD/AlephOne"
-# The rest of the drawer as the package target made it.
+# The rest of the drawer as the package target made it. LhA keeps files
+# only, so the empty Scenario drawer gets a note to keep it (and to say
+# what goes there; see Data-ReadMe).
+printf '%s\n' "Copy the contents of one Marathon scenario's data drawer (Map, Shapes," \
+	"Sounds, Images, Music, ...) here, then open AlephOne. See Data-ReadMe." \
+	> build/amigaos/AlephOne/Scenario/Put-Marathon-data-here
 (cd build/amigaos/AlephOne && tar --format=ustar --exclude=./AlephOne -cf "$BUILD/drawer.tar" .)
 
 python3 - "$BUILD" "$STOVE/bin/m68k-amigaos-gcc" "AlephOne" <<'PY'
