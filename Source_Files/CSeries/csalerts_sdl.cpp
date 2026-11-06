@@ -63,9 +63,9 @@ static void amiga_alert_requester(const char *title, const char *message)
 	struct EasyStruct es;
 	es.es_StructSize = sizeof(es);
 	es.es_Flags = 0;
-	es.es_Title = (UBYTE *) title;
-	es.es_TextFormat = (UBYTE *) "%s";
-	es.es_GadgetFormat = (UBYTE *) "OK";
+	es.es_Title = (CONST_STRPTR) title;
+	es.es_TextFormat = (CONST_STRPTR) "%s";
+	es.es_GadgetFormat = (CONST_STRPTR) "OK";
 	APTR args[1] = { (APTR) message };
 	EasyRequestArgs(NULL, &es, NULL, args);
 	CloseLibrary((struct Library *) IntuitionBase);
