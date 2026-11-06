@@ -51,7 +51,7 @@ static const char* sStringSetNumber128[] = {
     "Sorry, $appName$ requires at least 3000k of free RAM.",
     "Sorry, $appName$ requires a 13\" monitor (640x480) or larger which can be set to at least 256 colors or grays.",
 #ifdef __amigaos__
-    "No Marathon data was found. Copy the contents of one scenario's data drawer ('Map', 'Shapes', 'Images', 'Sounds', ...) into the Scenario drawer beside AlephOne, or set the DATA tool type of AlephOne's icon to a scenario's drawer, and try again. Data-ReadMe in the AlephOne drawer has the details.",
+    "No Marathon data found. Copy one scenario's data (Map, Shapes, Images, Sounds...) into the Scenario drawer beside AlephOne, or set the DATA tool type of its icon. See Data-ReadMe.",
 #else
     "Please be sure the files 'Map', 'Shapes', 'Images' and 'Sounds' are correctly installed and try again.",
 #endif
