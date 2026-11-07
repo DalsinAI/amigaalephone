@@ -1,10 +1,10 @@
-; $VER: Install-AlephOne 1.6.2-amiga1 (6.11.2026)
+; $VER: Install-AlephOne 1.6.2-amiga2 (7.11.2026)
 ; The Amiga Installer script for Aleph One, an AmiCradle game port.
 ; Made by amicradle scripts/port_installer.py: change the spec, not this file.
 ; Run it from its icon, beside the AlephOne drawer where the archive was unpacked.
 
 (set @app-name "Aleph One")
-(set #version "1.6.2-amiga1")
+(set #version "1.6.2-amiga2")
 (set #drawer "AlephOne")
 (set #program "AlephOne")
 (set #space 14649)  ; KB
@@ -30,7 +30,7 @@
 (if (<> (exists (tackon #from #program) (noreq)) 1)
     (abort "The AlephOne drawer has no AlephOne in it. Unpack the whole archive again."))
 
-(welcome "This installs Aleph One 1.6.2-amiga1 for AmigaOS 3.2 on a 68040, 68060 or 68080 with an FPU.")
+(welcome "This installs Aleph One 1.6.2-amiga2 for AmigaOS 3.2 on a 68040, 68060 or 68080 with an FPU.")
 
 ; where: the parent drawer
 (set #default
@@ -107,7 +107,7 @@
 (complete 100)
 (if @pretend
     (message (cat "Pretend: nothing was copied or changed. Aleph One would have gone in " #dest "."))
-    (message (cat "Aleph One 1.6.2-amiga1 is installed in " #dest "."
+    (message (cat "Aleph One 1.6.2-amiga2 is installed in " #dest "."
                   "\n\nTo start it, open the AlephOne drawer and double-click the AlephOne icon."
                   (if (= #kept "") "" (cat "\n\nLeft as they were: " #kept ".")))))
 (exit (quiet))
