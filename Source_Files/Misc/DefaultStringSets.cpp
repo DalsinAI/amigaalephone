@@ -50,7 +50,11 @@ static const char* sStringSetNumber128[] = {
     "Sorry, $appName$ requires System Software 7.0 or higher.",
     "Sorry, $appName$ requires at least 3000k of free RAM.",
     "Sorry, $appName$ requires a 13\" monitor (640x480) or larger which can be set to at least 256 colors or grays.",
+#ifdef __amigaos__
+    "No Marathon data found. Copy one scenario's data (Map, Shapes, Images, Sounds...) into the Scenario drawer beside AlephOne, or set the DATA tool type of its icon. See Data-ReadMe.",
+#else
     "Please be sure the files 'Map', 'Shapes', 'Images' and 'Sounds' are correctly installed and try again.",
+#endif
     "$appName$ couldn't initialize the sound.",
     "$appName$ has encountered a file system error.  Check to make sure you have enough disk space and that you are not trying to save to a locked volume.",
     "This copy of $appName$ has been modified, perhaps by a virus.  Please re-install it from the original disks.",

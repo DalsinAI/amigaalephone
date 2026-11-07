@@ -46,6 +46,14 @@ April 22, 2003 (Woody Zenfell):
 #include <sys/wait.h>
 #endif
 
+#ifdef __amigaos__
+// OpenGPU's SDL 2 has no message box: before the game's screen is up (no
+// Marathon data, say) an alert is an Intuition requester on the Workbench
+// screen (amiga/amiga_main.cpp), else a Workbench start would end without
+// a word.
+#include "amiga_main.h"
+#endif
+
 /*
  *  Display alert message
  */
@@ -147,7 +155,11 @@ extern bool MainScreenVisible(void);
 void alert_user(const char *message, short severity) 
 {
   if (!MainScreenVisible()) {
+#ifdef __amigaos__
+	amiga_alert_requester(severity == infoError ? "Aleph One: Warning" : "Aleph One: Error", message);
+#else
 	SDL_ShowSimpleMessageBox(severity == infoError ? SDL_MESSAGEBOX_WARNING : SDL_MESSAGEBOX_ERROR, severity == infoError ? "Warning" : "Error", message, NULL);
+#endif
   } else {
     dialog d;
     vertical_placer *placer = new vertical_placer;

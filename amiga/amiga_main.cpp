@@ -17,6 +17,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
+#include <intuition/intuition.h>
+#include <proto/intuition.h>
 
 #include "amiga_main.h"
 
@@ -71,4 +73,48 @@ void amiga_workbench_args(int* argc, char*** argv)
 	ptrs.push_back(NULL);
 	*argc = (int)words.size();
 	*argv = ptrs.data();
+}
+
+void amiga_alert_requester(const char* title, const char* message)
+{
+	struct IntuitionBase* IntuitionBase = (struct IntuitionBase*) OpenLibrary((CONST_STRPTR) "intuition.library", 37);
+	if (!IntuitionBase)
+		return;
+	struct EasyStruct es;
+	es.es_StructSize = sizeof(es);
+	es.es_Flags = 0;
+	es.es_Title = (CONST_STRPTR) title;
+	es.es_TextFormat = (CONST_STRPTR) "%s";
+	es.es_GadgetFormat = (CONST_STRPTR) "OK";
+	// EasyRequest does not wrap: a long alert would run off the screen and
+	// hide its button, so the text is broken into lines of up to 60.
+	std::string text, word;
+	size_t col = 0;
+	for (const char* p = message;; p++) {
+		if (*p && *p != ' ' && *p != '\n') {
+			word += *p;
+			continue;
+		}
+		if (!word.empty()) {
+			if (col && col + 1 + word.size() > 60) {
+				text += '\n';
+				col = 0;
+			} else if (col) {
+				text += ' ';
+				col++;
+			}
+			text += word;
+			col += word.size();
+			word.clear();
+		}
+		if (!*p)
+			break;
+		if (*p == '\n') {
+			text += '\n';
+			col = 0;
+		}
+	}
+	APTR args[1] = { (APTR) text.c_str() };
+	EasyRequestArgs(NULL, &es, NULL, args);
+	CloseLibrary((struct Library*) IntuitionBase);
 }
