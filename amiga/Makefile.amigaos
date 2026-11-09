@@ -97,6 +97,7 @@ package: $(OUT)/$(PROG) $(MML) $(ICONS) AMIGA_PORT.md amiga/Data-ReadMe COPYING
 	cp $(THEME)/Plugin.xml $(OUT)/Plugins/Default_Theme/
 	cp $(THEME)/resources/* $(OUT)/Plugins/Default_Theme/resources/
 	cp AMIGA_PORT.md $(OUT)/ReadMe
+	cp amiga/Controls $(OUT)/Controls
 	cp amiga/Data-ReadMe $(OUT)/Data-ReadMe
 	cp COPYING $(OUT)/COPYING.txt
 	cp amiga/icons/AlephOne.info amiga/icons/ReadMe.info \
