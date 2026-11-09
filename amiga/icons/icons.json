@@ -11,7 +11,8 @@
       "kind": "tool",
       "stack": 1048576,
       "toolTypes": [
-        "(DATA=Work:Marathon2)"
+        "(DATA=Work:Marathon2)",
+        "(FULLSCREEN)"
       ]
     },
     {
