@@ -101,10 +101,7 @@ package: $(OUT)/$(PROG) $(MML) $(ICONS) AMIGA_PORT.md amiga/Data-ReadMe COPYING
 	cp COPYING $(OUT)/COPYING.txt
 	cp amiga/icons/AlephOne.info amiga/icons/ReadMe.info \
 	   amiga/icons/Data-ReadMe.info amiga/icons/COPYING.txt.info \
-	   amiga/icons/Scenario.info amiga/icons/MML.info \
-	   amiga/icons/Plugins.info $(OUT)/
-	cp amiga/icons/Default_Theme.info $(OUT)/Plugins/
-	cp amiga/icons/resources.info $(OUT)/Plugins/Default_Theme/
+	   amiga/icons/Scenario.info $(OUT)/
 	cp amiga/icons/AlephOne-drawer.info $(BUILD)/AlephOne.info
 
 $(OBJDIR)/amiga/%.o: amiga/%.cpp amiga/config.h
