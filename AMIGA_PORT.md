@@ -112,7 +112,8 @@ paths):
 BOOST defaults to .deps/boost_1_83_0 (not in the repository: unpack
 boost_1_83_0.tar.bz2's boost/ there). Output: build/amigaos/AlephOne/
 (AlephOne, ReadMe, Data-ReadMe, COPYING.txt, MML/, Plugins/Default_Theme/,
-an empty Scenario/, and their icons) and build/amigaos/AlephOne.info.
+an empty Scenario/, and icons for the program, the ReadMes, the licence and
+Scenario) and build/amigaos/AlephOne.info.
 Flags: -noixemul -m68040 -m68881 -O2 -std=gnu++17 and GCC 16's
 -fno-tree-loop-distribute-patterns. Upstream's files build with the
 compiler's default warnings, as upstream's configure builds them, and
@@ -122,8 +123,8 @@ different contents" for an inline Boost.System function: each object's
 copy points at its own copy of a string, the linker keeps one copy and its
 own relocations, so this is expected and harmless.
 
-Icons: amiga/icons/icons.json, from Aleph One's program icon
-(flatpak/alephone.png) and scenario file icon:
+Icons: amiga/icons/icons.json, from our own GlowIcon art
+(amiga/icons/art/alephone.svg):
 
     python3 AMICRADLE/scripts/port_icons.py amiga/icons/icons.json --out amiga/icons
 
